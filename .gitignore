@@ -1,0 +1,23 @@
+# Public repository only. Private development data is never copied into this export.
+/dist/
+/node_modules/
+/.env
+/.env.*
+*.log
+*.tmp
+*.bak
+*.zip
+*.sha256
+/reference/
+/fixtures/
+/tests/fixtures/
+/tests/generated*
+/docs/evidence/
+/evidence/
+/.codex/
+/.agents/
+/.aws/
+/.vscode/
+/.idea/
+Thumbs.db
+.DS_Store

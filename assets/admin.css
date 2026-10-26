@@ -1,0 +1,119 @@
+.aaa-admin { max-width: 1120px; }
+.aaa-admin .aaa-card, .aaa-admin [data-aaa-article-stage] { background: #fff; border: 1px solid #dcdcde; border-radius: 12px; padding: 24px; margin: 20px 0; }
+.aaa-admin .aaa-choice-group { border: 0; padding: 0; margin: 24px 0; min-width: 0; }
+.aaa-admin .aaa-choice-group legend { font-size: 19px; font-weight: 600; margin-bottom: 12px; }
+.aaa-admin .aaa-choice-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.aaa-admin .aaa-choice-card { position: relative; cursor: pointer; min-width: 0; }
+.aaa-admin .aaa-choice-card input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.aaa-admin .aaa-choice-content { display: flex; align-items: center; gap: 12px; padding: 22px 16px; min-height: 104px; height: 100%; box-sizing: border-box; border: 2px solid #dce4ec; border-radius: 12px; font-weight: 600; overflow-wrap: anywhere; transition: background .15s, border-color .15s, box-shadow .15s; }
+.aaa-admin .aaa-choice-content .dashicons { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; font-size: 26px; border-radius: 50%; background: #f0f5fa; flex-shrink: 0; color: #2271b1; }
+.aaa-admin .aaa-choice-text { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.aaa-admin .aaa-choice-label { font-size: 15px; color: #172d47; line-height: 1.5; }
+.aaa-admin .aaa-choice-help { font-size: 12px; font-weight: 400; color: #536780; line-height: 1.6; }
+.aaa-admin .aaa-choice-tick { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 2px solid #b5c2d1; border-radius: 50%; color: transparent; margin-left: auto; flex-shrink: 0; box-sizing: border-box; }
+.aaa-admin .aaa-choice-card input:checked + .aaa-choice-content { background: linear-gradient(120deg,#e6f3ff,#f7fbff); border-color: #1683ed; box-shadow: 0 2px 7px #2271b118; }
+.aaa-admin .aaa-choice-card input:checked + .aaa-choice-content .dashicons { background: #d6eaff; }
+.aaa-admin .aaa-choice-card input:checked + .aaa-choice-content .aaa-choice-tick { background: #087aec; border-color: #087aec; color: #fff; }
+.aaa-admin .aaa-choice-card:hover input:not(:disabled) + .aaa-choice-content { border-color: #2271b1; }
+.aaa-admin .aaa-choice-card input:checked + .aaa-choice-content .aaa-choice-tick { visibility: visible; }
+.aaa-admin .aaa-choice-card input:focus-visible + .aaa-choice-content { outline: 3px solid #1d2327; outline-offset: 3px; }
+.aaa-admin .aaa-choice-card input[aria-disabled="true"] + .aaa-choice-content { opacity: .55; cursor: not-allowed; }
+.aaa-admin .aaa-prompt-scroll { height: 260px; max-height: 50vh; overflow: auto; resize: vertical; white-space: pre-wrap; overflow-wrap: anywhere; }
+.aaa-admin .aaa-mode-summary { padding: 12px; background: #edf6ff; border-radius: 6px; }
+.aaa-admin .aaa-journey .is-complete { background: #e5f3ff; color: #135e96; }
+.aaa-admin .aaa-next-step { padding: 22px 24px; margin: 24px 0; background: #f0f7ff; border: 1px solid #d1e4fa; border-radius: 12px; }
+.aaa-admin .aaa-next-step h3 { margin-top: 0; }
+.aaa-admin a.button.aaa-next-step-button { display: inline-flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 60px; width: min(100%,500px); box-sizing: border-box; padding: 14px 22px; font-size: 17px; font-weight: 600; line-height: 1.6; white-space: normal; border-radius: 8px; background: linear-gradient(110deg,#087dec,#0867d7); border-color: #0867d7; color: #fff; box-shadow: 0 3px 8px #087dec26; }
+.aaa-admin a.button.aaa-next-step-button:hover { background: #075bbd; border-color: #075bbd; color: #fff; }
+.aaa-admin a.button.aaa-next-step-button:focus-visible { outline: 3px solid #1d2327; outline-offset: 3px; }
+.aaa-admin .aaa-next-arrow { font-size: 27px; line-height: 1; flex-shrink: 0; }
+.aaa-admin form[data-aaa-operation="article"] > .submit .button-primary { min-width: min(100%,420px); max-width: 100%; border-radius: 8px; background: linear-gradient(110deg,#087dec,#0867d7); border-color: #0867d7; font-weight: 600; box-shadow: 0 3px 8px #087dec26; }
+.aaa-admin form[data-aaa-operation="article"] > .submit .button-primary:hover { background: #075bbd; }
+.aaa-admin details { margin: 18px 0; padding: 16px; background: #fff; border: 1px solid #c3c4c7; }
+.aaa-admin summary { font-weight: 600; cursor: pointer; font-size: 15px; }
+.aaa-admin .form-table th { width: 230px; }
+.aaa-admin .form-table textarea { max-width: 760px; }
+.aaa-admin .aaa-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.aaa-admin .aaa-actions form { margin: 0; }
+.aaa-admin .aaa-filter { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 16px 0; }
+.aaa-admin .aaa-filter label { display: grid; gap: 4px; }
+.aaa-admin .aaa-term-list { max-height: 240px; overflow: auto; padding: 12px 16px; background: #fff; border: 1px solid #c3c4c7; }
+.aaa-admin .aaa-terms { background: #fff; padding: 12px 16px; margin: 16px 0; border: 1px solid #c3c4c7; }
+.aaa-admin .aaa-terms legend { font-weight: 600; }
+.aaa-admin .aaa-term-choices { display: flex; flex-wrap: wrap; gap: 10px 24px; max-height: 240px; overflow: auto; margin-top: 12px; }
+.aaa-admin .aaa-json { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 500px; overflow: auto; }
+.aaa-admin .aaa-warning { border-left: 4px solid #dba617; background: #fff; padding: 12px; }
+.aaa-admin .aaa-preview .wp-block-table { max-width: 100%; margin: 16px 0; overflow-x: auto; }
+.aaa-admin .aaa-preview .wp-block-table table { border-collapse: collapse; }
+.aaa-admin .aaa-preview .wp-block-table th, .aaa-admin .aaa-preview .wp-block-table td { border: 1px solid #c3c4c7; padding: 8px; min-width: 6em; }
+.aaa-admin .aaa-preview img { max-width: 100%; height: auto; }
+.aaa-admin .button.aaa-main-action { min-height: 48px; padding: 10px 24px; font-size: 16px; line-height: 26px; white-space: normal; text-align: center; }
+.aaa-admin form[data-aaa-operation="article"] > .submit .button-primary { min-height: 48px; padding: 10px 24px; font-size: 16px; white-space: normal; }
+.aaa-admin .aaa-current-task { border-left: 4px solid #2271b1; background: #f0f6fc; padding: 16px; font-weight: 600; }
+.aaa-admin .aaa-upload-area { margin: 20px 0; padding: 28px 24px; background: #fff; border: 2px solid #a7aaad; border-radius: 6px; text-align: center; }
+.aaa-admin .aaa-csv-drop { border-style: dashed; }
+.aaa-admin .aaa-media-drop { border-style: dashed; }
+.aaa-admin .aaa-media-drop.is-dragging { background: #f0f6fc; border-color: #2271b1; }
+.aaa-admin .aaa-media-drop[aria-busy="true"] { border-color: #2271b1; }
+.aaa-admin [data-aaa-upload-errors] { color: #b32d2e; overflow-wrap: anywhere; }
+.aaa-admin .aaa-csv-drop.is-dragging, .aaa-admin .aaa-csv-drop:focus-within { background: #f0f6fc; border-color: #2271b1; }
+.aaa-admin .aaa-upload-title { font-size: 19px; font-weight: 600; }
+.aaa-admin .aaa-file-input { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.aaa-admin [data-aaa-csv-pick]:focus-visible { outline: 3px solid #1d2327; outline-offset: 4px; }
+.aaa-admin [data-aaa-csv-error] { color: #b32d2e; font-weight: 600; }
+.aaa-admin [data-aaa-csv-selection] { overflow-wrap: anywhere; font-weight: 600; }
+.aaa-admin .aaa-journey { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 20px 0; }
+.aaa-admin .aaa-journey li { margin: 0; padding: 10px 14px; background: #e9eaeb; border-radius: 4px; }
+.aaa-admin .aaa-journey [aria-current="step"] { background: #2271b1; color: #fff; font-weight: 600; }
+.aaa-admin .aaa-material-card { margin: 20px 0; padding: 16px; background: #fff; border: 1px solid #c3c4c7; min-width: 0; }
+.aaa-admin .aaa-material-card.is-dragging { border: 2px dashed #2271b1; background: #f0f6fc; }
+.aaa-admin .aaa-material-card details { margin: 8px 0; padding: 8px; }
+.aaa-admin .aaa-file-name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aaa-admin .aaa-batch-file.is-assigned img { display: none; }
+.aaa-admin .aaa-preview { max-height: 560px; overflow: auto; }
+.aaa-admin .aaa-material-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; overflow-wrap: anywhere; }
+.aaa-admin .aaa-media-thumb { display: block; max-width: 180px; max-height: 120px; width: auto; height: auto; object-fit: contain; }
+.aaa-admin .aaa-material-selected { border-left: 3px solid #dcdcde; padding-left: 16px; }
+.aaa-admin .aaa-batch-file { padding: 12px; margin-bottom: 10px; background: #f0f6fc; overflow-wrap: anywhere; }
+.aaa-admin .aaa-material-card select, .aaa-admin .aaa-batch-file select { max-width: 100%; }
+.aaa-admin [data-aaa-mapping-state] { font-weight: 600; }
+.aaa-admin .aaa-diff-wrap { overflow-x: auto; }
+.aaa-admin .aaa-diff-wrap table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.aaa-admin .aaa-diff-wrap td, .aaa-admin .aaa-diff-wrap th { padding: 8px; overflow-wrap: anywhere; vertical-align: top; }
+.aaa-admin .diff-deletedline { background: #fcdddd; }
+.aaa-admin .diff-addedline { background: #dff3df; }
+.aaa-admin [hidden] { display: none !important; }
+.aaa-admin .widefat { margin: 16px 0; }
+.aaa-admin .widefat td { overflow-wrap: anywhere; }
+.aaa-admin .aaa-setup-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
+.aaa-admin .aaa-setup-nav [aria-current="page"] { background: #2271b1; color: #fff; }
+@media (max-width: 782px) {
+	.aaa-admin .aaa-choice-cards { grid-template-columns: minmax(0,1fr); }
+	.aaa-admin .aaa-card, .aaa-admin [data-aaa-article-stage] { padding: 16px; }
+	.aaa-admin .aaa-material-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+	.aaa-admin .form-table th { width: auto; }
+	.aaa-admin input.regular-text, .aaa-admin select { max-width: 100%; }
+	.aaa-admin .aaa-filter { align-items: stretch; flex-direction: column; }
+}
+
+/* Administrator settings share the article workflow's scoped visual language. */
+.aaa-admin .aaa-admin-breadcrumb { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0 24px; }
+.aaa-admin .aaa-admin-status-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin: 18px 0 26px; }
+.aaa-admin .aaa-admin-entry-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; margin: 20px 0 28px; }
+.aaa-admin .aaa-admin-card { min-width: 0; background: #fff; border: 1px solid #dce4ec; border-radius: 12px; padding: 24px; margin: 16px 0; overflow-wrap: anywhere; }
+.aaa-admin .aaa-admin-entry-grid > .aaa-admin-card, .aaa-admin .aaa-admin-status-grid > .aaa-admin-card { margin: 0; }
+.aaa-admin .aaa-admin-card h2, .aaa-admin .aaa-admin-card h3 { color: #172d47; margin-top: 0; line-height: 1.5; }
+.aaa-admin .aaa-admin-card h3 .dashicons { color: #2271b1; font-size: 28px; width: 30px; height: 30px; margin-right: 7px; vertical-align: middle; }
+.aaa-admin .aaa-admin-status-grid .aaa-admin-card { padding: 18px; background: #f8fbff; }
+.aaa-admin .aaa-admin-status-grid h3 { font-size: 15px; }
+.aaa-admin .aaa-setup-choice { margin: 20px 0; padding: 0; border: 0; }
+.aaa-admin .aaa-setup-choice legend, .aaa-admin [data-aaa-setup-scope] legend { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
+.aaa-admin .aaa-admin-choice { display: flex; align-items: center; gap: 14px; cursor: pointer; margin: 12px 0; }
+.aaa-admin .aaa-admin-choice > span { display: block; flex: 1; padding: 20px; border: 2px solid #dce4ec; border-radius: 9px; font-weight: 600; }
+.aaa-admin .aaa-admin-choice input:checked + span { color: #135e96; border-color: #2271b1; background: #edf6ff; }
+.aaa-admin .aaa-admin-choice input:focus-visible + span { outline: 3px solid #1d2327; outline-offset: 3px; }
+.aaa-admin [data-aaa-setup-scope] { border: 1px solid #dce4ec; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+.aaa-admin [data-aaa-setup-scope][hidden] { display: none; }
+.aaa-admin .aaa-admin-card .aaa-secondary-action { white-space: normal; }
+@media (max-width: 1000px) { .aaa-admin .aaa-admin-status-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 782px) { .aaa-admin .aaa-admin-entry-grid, .aaa-admin .aaa-admin-status-grid { grid-template-columns: minmax(0,1fr); } .aaa-admin .aaa-admin-card { padding: 18px; } }
