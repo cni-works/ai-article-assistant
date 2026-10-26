@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** AI-assisted setup uses a separate, patch-only CSV and never accepts option names. */
 final class Setup {
-	const VERSION = 'setup-prompt.8';
+	const VERSION = 'setup-prompt.9';
 	const BACKUP = 'aaa_setup_backup_v1';
 	public static function allowed(): bool { return Transfer::allowed(); }
 	public static function key(): string { return 'aaa_setup_' . get_current_blog_id() . '_' . get_current_user_id(); }
@@ -105,6 +105,7 @@ final class Setup {
 			: '今回は基本初期設定です。サイト・事業の事実、読者、ブログの役割、カテゴリー、投稿目的と必要な記事の種類を中心に相談してください。文章品質は有効な共通推奨を使い、文章量・見出し数・画像枚数等を全問ヒアリングしません。既知情報は聞き直しません。詳細を調整したい場合だけ任意の詳細設定相談を案内してください。';
 		return '# WordPressの初期設定を相談する' . "\nプロンプト版：" . self::VERSION . "\n"
 			. $mode_instruction . "\n品質の推奨チェックはyes/noで指定し、空文字を使いません。noはその推奨の追加停止であり、既存の独自指示や安全上の禁止事項の解除ではありません。自由入力との関係はeffective_qualityのprecedenceに従い、矛盾する明示条件は確認してください。\n"
+			. "CSV生成前に、すべての選択式項目のvalueがsetup_context.fieldsのchoicesのキーと完全一致するか自己点検してください。表示名や別項目の値を転記しません。workflow_mode（固定する制作モード）はsimple（簡易作成）・interview（ヒアリング重視）・research（リサーチ重視）だけです。guided・delegated・proofreadは記事ごとのinteraction_mode（記事の進め方）の値であり、初期設定CSVのworkflow_modeに使用できません。『相談しながら』をinterviewへ自動変換しません。workflow_policy=recommendでは必要のない固定モードの変更行を省略して既存値を維持し、『管理者が固定』へ新しく変更する場合は承認されたworkflow_policy=fixedと有効なworkflow_modeを指定します。設定不要な項目を空文字で埋めません。\n"
 			. "基本と詳細のCSVは別々の変更です。アップロードと比較だけでは保存されず、次のCSVを使う前に各CSVを比較・承認して適用します。設定が変わってもcontext_revisionを手書きで差し替えません。プラグインが相談時の控えと現在値を照合し、競合があれば比較して管理者が承認します。控えがない・期限切れ・投稿先変更の場合は最新プロンプトで再生成します。\n"
 			. "あなたはサイト制作者の相談相手です。最初に使い方を短く案内し、いきなり設定やCSVを出さないでください。既存設定を読み、上記の相談モードに必要な不足だけ1回最大3問で聞きます。サイトのサービス・読者・目的は基本相談で未確定の場合だけ確認します。答えやすい選択肢や短い回答例を示し、確定済み情報を繰り返し質問しません。基本相談では必要な記事の種類、独自の強み、投稿先カテゴリーの方針を確認します。文章の詳細は希望がある場合だけ相談します。短い告知へSEO長文を強制しません。料金・実績・資格・連絡先を創作せず、不明な事実は未設定にします。根拠のないSEO効果を保証しません。専門性が必要な記事は調査と本人へのヒアリングを設計します。\n"
 			. "クライアントは『書きたいことが決まっている』『何を書くかから相談したい』『ネタ・タイトルだけ相談』を選べます。相談しながらは段階的な構成・本文確認、お任せは必要な情報確認後に構成と本文をまとめて提案し、添削は提供原稿の趣旨を保ちます。ネタ相談では本文やCSVを強制しません。お任せでも最終承認、必要な事実確認と画像1枚ずつの承認を維持します。簡易・ヒアリング・リサーチのモードは目的に合わせて推奨し、不要な質問は増やしません。\n"
@@ -119,6 +120,19 @@ final class Setup {
 	private static function term_id( string $target, array $catalogue ): int {
 		if ( ! preg_match( '/^([a-zA-Z0-9_-]+):([1-9][0-9]*)$/D', $target, $match ) ) { return 0; }
 		return isset( $catalogue[ $match[1] ][ (int) $match[2] ] ) ? (int) $match[2] : 0;
+	}
+	/** Retain strict validation, but identify the CSV row and the exact accepted keys. */
+	private static function csv_choice_error( array $row, array $definition, array $snapshot ): \WP_Error {
+		$target = 'site' === $row['scope'] ? 'サイト全体' : $row['target'];
+		if ( 'profile' === $row['scope'] ) { $target = '記事の種類「' . Store::text( $snapshot['profiles'][ $row['target'] ]['name'] ?? $row['target'] ) . '」'; }
+		$value = $row['value'];
+		if ( preg_match( '/^(.{0,100})(.*)$/us', $value, $parts ) ) { $value = $parts[1] . ( '' !== $parts[2] ? '…' : '' ); }
+		$choices = array();
+		foreach ( $definition[4] as $key => $label ) { $choices[] = $key . '（' . $label . '）'; }
+		$message = 'CSVの' . (int) $row['_line'] . '行目：' . $target . '／' . $definition[0] . '（' . $row['field'] . '）の値「' . $value . '」は使用できません。使用できる値：' . implode( '、', $choices ) . '。';
+		if ( 'workflow_mode' === $row['field'] && in_array( $row['value'], array( 'guided', 'delegated', 'proofread' ), true ) ) { $message .= ' guided・delegated・proofreadは記事ごとの進め方（interaction_mode）の値で、制作モードとは別項目です。自動変換はしません。'; }
+		$message .= ' AIにこのエラーを伝えてCSVを修正してください。変更不要なら該当行を除くと既存値を維持します。context_revisionは書き換えないでください。このCSVは適用していません。保存済み設定と未適用の比較は保持しています。';
+		return new \WP_Error( 'choice', $message );
 	}
 	public static function parse( string $csv, array $new_ids = array() ) {
 		if ( ! self::allowed() ) { return new \WP_Error( 'permission', '初期設定には管理者権限が必要です。' ); }
@@ -144,6 +158,8 @@ final class Setup {
 				if ( ! preg_match( '/^new:[a-z][a-z0-9-]{0,39}$/D', $target ) ) { return new \WP_Error( 'target', '記事の種類の指定が正しくありません。' ); }
 				$new_ids[ $target ] = $new_ids[ $target ] ?? wp_generate_uuid4();
 			}
+			$definition = $fields[ $scope ][ $field ];
+			if ( 'select' === $definition[1] && ! isset( $definition[4][ $row['value'] ] ) ) { return self::csv_choice_error( $row, $definition, $before ); }
 			$key = $scope . '|' . $target . '|' . $field;
 			if ( isset( $seen[ $key ] ) ) { return new \WP_Error( 'duplicate', '同じ設定項目がCSV内で重複しています。' ); }
 			$seen[ $key ] = true; $groups[ $scope ][ $target ][ $field ] = $row['value'];

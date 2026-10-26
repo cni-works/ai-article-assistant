@@ -36,7 +36,7 @@ function get_locale(){return 'en_US';}
 function get_site_option($key,$default=false){return $GLOBALS['options'][$key]??$default;}
 function update_site_option($key,$value){$GLOBALS['options'][$key]=$value;return true;}
 function _cleanup_header_comment($text){return trim($text);}
-function get_plugin_data($file,$markup=false,$translate=false){$text=file_get_contents($file);$result=array();foreach(array('Name'=>'Plugin Name','Version'=>'Version','Description'=>'Description','PluginURI'=>'Plugin URI','TextDomain'=>'Text Domain','RequiresWP'=>'Requires at least','RequiresPHP'=>'Requires PHP') as $key=>$label)if(preg_match('/^\s*\* '.preg_quote($label,'/').': (.+)$/m',$text,$m))$result[$key]=trim($m[1]);return $result;}
+function get_plugin_data($file,$markup=false,$translate=false){$text=file_get_contents($file);$result=array();foreach(array('Name'=>'Plugin Name','Version'=>'Version','Description'=>'Description','PluginURI'=>'Plugin URI','TextDomain'=>'Text Domain','RequiresWP'=>'Requires at least','RequiresPHP'=>'Requires PHP') as $key=>$label)if(preg_match('/^\s*\* '.preg_quote($label,'/').': (.+)$/m',$text,$m))$result[$key]=trim($m[1]);if(isset($GLOBALS['installed_version']))$result['Version']=$GLOBALS['installed_version'];return $result;}
 function wp_remote_get($url,$args=array()){
  $GLOBALS['http_calls'][]=array($url,$args);
  if($GLOBALS['network_failure']??false)return new WP_Error('network','Simulated network outage');
@@ -44,7 +44,7 @@ function wp_remote_get($url,$args=array()){
  if(str_ends_with($path,'/releases/latest'))return array('code'=>200,'body'=>json_encode($GLOBALS['release']));
  if(str_contains($path,'/contents/')){
   $name=basename($path);
-  $text=$name==='ai-article-assistant.php'?str_replace('Version: 0.1.0','Version: '.$GLOBALS['remote_version'],file_get_contents(AAA_FILE)):($name==='readme.txt'?"=== AI Article Assistant ===\nRequires at least: 6.3\nRequires PHP: 8.0\nStable tag: ".$GLOBALS['remote_version']."\n\n== Description ==\nArticle drafting.\n\n== Changelog ==\n\n= ".$GLOBALS['remote_version']." =\n* Update test.\n":'');
+  $text=$name==='ai-article-assistant.php'?preg_replace_callback('/^(\s*\* Version: )[^\r\n]+/m',static function($m){return $m[1].$GLOBALS['remote_version'];},file_get_contents(AAA_FILE)):($name==='readme.txt'?"=== AI Article Assistant ===\nRequires at least: 6.3\nRequires PHP: 8.0\nStable tag: ".$GLOBALS['remote_version']."\n\n== Description ==\nArticle drafting.\n\n== Changelog ==\n\n= ".$GLOBALS['remote_version']." =\n* Update test.\n":'');
   return array('code'=>200,'body'=>json_encode(array('encoding'=>'base64','content'=>base64_encode($text))));
  }
  throw new RuntimeException('Unexpected request: '.$url);
@@ -55,7 +55,7 @@ use AAA\Updater;
 function release_fixture($version='0.1.1'){
  return (object)array('tag_name'=>'v'.$version,'prerelease'=>false,'draft'=>false,'created_at'=>'2026-10-26T00:00:00Z','body'=>'Validated release notes.','zipball_url'=>'https://api.github.com/repos/cni-works/ai-article-assistant/zipball/v'.$version,'assets'=>array((object)array('name'=>Updater::ASSET,'state'=>'uploaded','size'=>2048,'browser_download_url'=>Updater::REPOSITORY.'/releases/download/v'.$version.'/'.Updater::ASSET,'download_count'=>0)));
 }
-$release=release_fixture();$remote_version='0.1.1';
+$release=release_fixture();$remote_version='0.1.1';$installed_version='0.1.0';
 $business=array('site'=>array('organization'=>'Example site'),'profile'=>array('enabled'=>'1'),'category'=>array('purpose'=>'Example category'),'article'=>array('id'=>1),'media'=>array('id'=>2));
 $options['business-data']=$business;
 if(($argv[1]??'')==='preloaded')require_once $plugin_root.'/vendor/plugin-update-checker/plugin-update-checker.php';
@@ -78,6 +78,15 @@ check($info && $info->version==='0.1.1' && $info->download_url===Updater::REPOSI
 check(!empty($info->sections['changelog']),'Version details contain changelog');
 $update=$checker->requestUpdate();$wp=$update->toWpFormat();
 check($wp->new_version==='0.1.1' && $wp->plugin==='ai-article-assistant/ai-article-assistant.php','WordPress-format update targets existing plugin');
+$checker->getUpdateState()->setUpdate($update);
+check($checker->getUpdate() && $checker->getInstalledVersion()==='0.1.0','Real PUC comparison offers 0.1.1 to installed 0.1.0');
+$list=$checker->injectUpdate((object)array('response'=>array('other/other.php'=>(object)array('new_version'=>'99.0.0'))));
+check($list->response['ai-article-assistant/ai-article-assistant.php']->new_version==='0.1.1' && isset($list->response['other/other.php']),'Core update list includes our update and preserves other plugin');
+$installed_version='0.1.1';$checker->getInstalledPackage()->clearCachedVersion();
+check($checker->getUpdate()===null,'Installed 0.1.1 does not receive same-version update');
+$list=$checker->injectUpdate($list);
+check(!isset($list->response['ai-article-assistant/ai-article-assistant.php']) && isset($list->no_update['ai-article-assistant/ai-article-assistant.php']),'Same-version core notification removed');
+$installed_version='0.1.0';$checker->getInstalledPackage()->clearCachedVersion();$checker->getUpdateState()->setUpdate(null);
 foreach($http_calls as [$url,$args]){check(str_starts_with($url,'https://api.github.com/repos/cni-works/ai-article-assistant/'),'HTTP metadata restricted to configured repository');check(empty($args['body'])&&!isset($args['headers']['Authorization']),'No article data or token sent');}
 $release=release_fixture('0.1.0');$remote_version='0.1.0';$same=$checker->requestInfo();
 check($same && !version_compare($same->version,'0.1.0','>'),'Same installed version is not newer');

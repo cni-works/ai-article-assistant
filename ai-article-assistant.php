@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/cni-works/ai-article-assistant
  * Update URI: https://github.com/cni-works/ai-article-assistant
  * Description: ChatGPTとの手動相談による記事制作を支援します。相談・CSV出力プロンプトと、新規下書きへのCSV取り込み。
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.3
  * Requires PHP: 8.0
  * License: GPL-2.0-or-later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AAA_VERSION', '0.1.0' );
+define( 'AAA_VERSION', '0.1.1' );
 define( 'AAA_FILE', __FILE__ );
 
 require_once __DIR__ . '/includes/class-config.php';

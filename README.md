@@ -64,4 +64,4 @@ Plugin Update Checker 5.7を同梱し、このリポジトリの正式Releaseと
 
 [CHANGELOG.md](CHANGELOG.md) に変更履歴、[docs/RELEASING.md](docs/RELEASING.md) に配布手順を記載しています。GitHub用ソースはプラグインファイルをリポジトリ直下に置き、配布ZIPでは `ai-article-assistant/` フォルダーにまとめます。
 
-この版は自動検査済みの初回リリースです。GitHub経由の実WordPress更新、実DBの保持、他プラグインとの共存は、公開前の検証サイトでの確認対象です。
+この版は自動検査済みです。GitHub経由の実WordPress更新、実DBの保持、他プラグインとの共存は、検証サイトでの確認対象です。
