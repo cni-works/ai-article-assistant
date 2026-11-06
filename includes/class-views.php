@@ -6,11 +6,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Views {
-	public static function journey( int $current ): void {
+	public static function journey( int $current, bool $optional_preparation = false ): void {
 		echo '<ol class="aaa-journey" aria-label="記事完成までの流れ">';
 		$steps = Consultation::titles() && $current <= 2 ? array( 1 => '相談の準備', 2 => 'ChatGPTでネタ・タイトルを相談' ) : array( 1 => '記事の準備', 2 => 'ChatGPTで制作', 3 => '完成ファイルを取り込む', 4 => '内容を確認して下書き保存' );
 		foreach ( $steps as $number => $label ) {
-			echo '<li' . ( $number === $current ? ' aria-current="step"' : '' ) . ' class="' . ( $number < $current ? 'is-complete' : '' ) . '">' . esc_html( ( $number < $current ? '✓ ' : $number . '. ' ) . $label ) . '</li>';
+			$optional = $optional_preparation && $number < 3;
+			$done = $number < $current && ! $optional;
+			echo '<li' . ( $number === $current ? ' aria-current="step"' : '' ) . ' class="' . ( $done ? 'is-complete' : '' ) . '">' . esc_html( ( $optional ? '任意：' : ( $done ? '✓ ' : $number . '. ' ) ) . $label ) . '</li>';
 		}
 		echo '</ol>';
 	}
@@ -95,7 +97,9 @@ final class Views {
 		$values = Store::site();
 		echo '<h2>サイト・事業の共通情報</h2><p>どんなサービス・活動なのか、誰向けなのかを共通情報として保存します。設定した情報は今後のAI相談の材料になります。保存だけでは外部へ送信されません。</p><p>本人の担当・経験・考え方は、<a href="' . esc_url( Admin::url( 'personal' ) ) . '">個人設定・投稿者プロフィール</a>に登録できます。個人運営でも、共通情報と本人の情報はそれぞれ保存します。</p>';
 		echo '<p>事実に関する情報は、基本初期設定でAIと相談し、内容を承認してから取り込めます。<a href="' . esc_url( Admin::url( 'setup' ) ) . '">基本初期設定へ</a>。文章の推奨設定は「記事品質の共通ルール」で管理します。</p>';
-		self::fields( Config::site_info_fields(), $values );
+		self::fields( array_diff_key( Config::site_info_fields(), Config::image_fields() ), $values );
+		echo '<h2>画像の標準設定</h2><p>記事ごとに変更できます。既存の作業は開始時の設定を維持します。</p>';
+		self::fields( Config::image_fields(), $values );
 		self::end();
 	}
 
@@ -319,6 +323,7 @@ final class Views {
 			$profile_id = 1 === count( $profiles ) ? (string) array_key_first( $profiles ) : '';
 		}
 		$selected_profile = $profiles[ $profile_id ] ?? array();
+		echo '<section class="aaa-card" data-aaa-direct-import><h2><span class="dashicons dashicons-upload" aria-hidden="true"></span> 完成した記事CSVを取り込む</h2><p>CSVがある方はこちらから。STEP1の概要入力・相談文生成をせず、取り込みだけ利用できます。</p><p><a class="button aaa-main-action" href="' . esc_url( Admin::url( 'import' ) ) . '">CSVの取り込みへ（STEP3） →</a></p><p>これからAIと相談して作る場合は、下のSTEP1へ進んでください。</p></section>';
 		if ( $article && ( ! isset( $types[ $type ] ) || ! isset( $profiles[ $profile_id ] ) ) ) { echo '<p class="aaa-warning">保存した投稿先または記事の種類が利用できません。選び直してください。</p>'; }
 		$form_article = $article;
 		if ( ! $article && '' !== ( $selected_profile['default_post_type'] ?? '' ) ) {
@@ -349,12 +354,24 @@ final class Views {
 		self::article_choices( 'aaa-profile', 'data[profile_id]', '記事の種類', array_map( static function ( $profile ) { return $profile['name']; }, $profiles ), $profile_id );
 		self::article_choices( 'aaa-post-type', 'data[post_type]', '投稿先', array_map( static function ( $object ) { return $object->labels->name; }, $types ), $type );
 		echo '<div data-aaa-writing-fields>';
+		echo '<section data-aaa-image-settings><h3>今回の画像</h3>';
+		$image_site = $snapshot ? $snapshot['site'] : Store::site();
+		$image_defaults = array_merge( Store::defaults( Config::image_fields() ), $image_site );
+		$image_summary = Config::image_fields()['image_layout'][4][ $image_defaults['image_layout'] ] ?? '従来の画像方針を使う';
+		if ( 'intro_body' === $image_defaults['image_layout'] ) { $image_summary .= '（本文' . $image_defaults['image_body_count'] . '枚）'; }
+		$image_summary .= '・' . ( Config::image_fields()['image_style'][4][ $image_defaults['image_style'] ] ?? '記事に合わせる' );
+		$image_fields = array_intersect_key( $basic, array_flip( array( 'image_choice' ) ) );
+		$image_fields['image_choice'][4]['site'] = '初期設定を使う：' . $image_summary;
+		self::fields( $image_fields, $article );
+		echo '<div data-aaa-image-request>';
+		self::fields( array_intersect_key( $basic, array_flip( array( 'image_request' ) ) ), $article );
+		echo '</div><p>手持ち画像を使うか、AIで作るかは相談で決められます。画像なしなら画像提案・制作を省略します。</p></section>';
 		self::profile_guidance( $profiles, $profile_id, $article );
 		echo '<details><summary>カテゴリー・資料・詳しい条件（必要な場合だけ）</summary>' ;
 		if ( $snapshot ) { echo '<p>作成開始時の設定：' . esc_html( $snapshot['captured_at'] ) . '</p><p><label><input type="checkbox" name="data[adopt_settings]" value="1"> 管理者の最新設定を採用する</label></p>'; }
 		echo '<h3>カテゴリー・タグ（複数選択可）</h3><p class="description">投稿先に対応する分類だけを選択してください。カテゴリーの最終決定は利用者が行います。</p>';
 		self::article_terms( $types, $form_article );
-		self::fields( array_diff_key( Config::article_fields(), array_flip( array( 'planning_mode', 'facts', 'interaction_mode', 'source_draft', 'reference_summary', 'audience' ) ) ), $article );
+		self::fields( array_diff_key( Config::article_fields(), array_flip( array( 'planning_mode', 'facts', 'interaction_mode', 'source_draft', 'reference_summary', 'audience', 'image_choice', 'image_request' ) ) ), $article );
 		echo '<h3>今回だけの文章の指定</h3><p>空欄は管理者が用意した設定に従います。禁止事項や公開前チェックは変更できません。</p>';
 		self::fields( Config::rules(), $article['overrides'] ?? array(), 'data[overrides]', true );
 		echo '<p>記事条件を保存した後、<a href="' . esc_url( Admin::url( 'media' ) ) . '">画像・PDF管理</a>で資料を登録できます。実ファイルはChatGPTへ直接添付し、読めない資料は説明を補ってください。</p></details></div></div></section>';
@@ -363,7 +380,6 @@ final class Views {
 		echo '<p><a href="' . esc_url( Admin::url( 'personal' ) ) . '">自分のプロフィールを確認・編集する</a></p>';
 		self::author_summary( Store::author_context() );
 		if ( $ready ) { echo '<p><a href="' . esc_url( Admin::url( '', array( 'step' => '2' ) ) ) . '">保存済みの相談を続ける（STEP2）</a></p>'; }
-		echo '<p><a href="' . esc_url( Admin::url( 'import' ) ) . '">すでに完成ファイルがある場合は取り込む（STEP3）</a></p>';
 		if ( $article ) { ImportScreen::new_article_form(); }
 		echo '</details>';
 	}
@@ -404,8 +420,11 @@ final class Views {
 		$record = Prompt::current();
 		if ( is_wp_error( $record ) || ! $record ) { echo '<p class="aaa-warning">概要を確認し、STEP1から相談文を準備してください。</p>'; return; }
 		echo '<p>下のボタンで相談文を全文コピーし、新しいChatGPTのチャットへ貼り付けてください。その後はAIの案内に沿って進めます。コピーだけでは制作完了になりません。</p><p><button type="button" class="button button-primary aaa-main-action" data-aaa-copy hidden>相談文をコピーする</button> <span role="status" aria-live="polite" data-aaa-copy-status></span></p><label for="aaa-prompt-output">ChatGPTへ渡す相談文（スクロールして確認できます）</label><textarea id="aaa-prompt-output" class="large-text code aaa-prompt-scroll" rows="10" readonly>' . esc_textarea( $record['text'] ) . '</textarea><details><summary>生成記録</summary><p>プロンプト版：' . esc_html( $record['prompt_version'] ) . ' ／ 生成日時：' . esc_html( $record['generated_at'] ) . '</p></details>';
+		$scope = $prepared['context']['existing_articles'] ?? array();
+		if ( ! Consultation::titles() && 'public_summary' === ( $scope['status'] ?? '' ) ) {
+			echo '<p>既存記事の参照：公開記事の概要 ' . esc_html( $scope['count'] ) . '件（最新50件まで）を相談文に含めています。</p>';
+		}
 		if ( Consultation::titles() ) {
-			$scope = $prepared['context']['existing_articles'] ?? array();
 			if ( $scope ) { echo '<p>既存記事の参照：' . esc_html( 'public_summary' === ( $scope['status'] ?? '' ) ? $scope['count'] . '件／対象' . $scope['total'] . '件（最新50件まで・本文全体なし）' : '管理者設定で無効' ) . '</p>'; }
 			$categories = $prepared['context']['category_catalogue'] ?? array();
 			echo '<p>カテゴリーの参照：' . esc_html( $categories['count'] ?? 0 ) . '件' . esc_html( ! empty( $categories['limited'] ) ? '（上限による省略あり）' : '' ) . '。目的・掲載方針を提案に反映します。' . esc_html( 'partially_unavailable' === ( $categories['status'] ?? '' ) ? '一部の分類を取得できませんでした。' : '' ) . '</p>';

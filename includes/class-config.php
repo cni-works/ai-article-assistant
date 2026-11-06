@@ -49,7 +49,7 @@ final class Config {
 			'publication_checks' => array( '公開前チェック（管理者専用）', 'textarea', '事実・権利・個人情報・リンクを確認する。', '記事個別設定では上書きできません。' ),
 			'min_section' => array( '短すぎるセクションの目安（文字）', 'number', 80, 'Phase 3以降の品質警告で利用する目安です。0で無効。上限100000。' ),
 			'min_article' => array( '記事本文の文字数の下限目安', 'number', 0, '取り込み前に警告する目安です。0で無効。短い告知に長文を強制する設定ではありません。' ),
-		), self::quality_fields(), array( 'default_interaction' => array( '新しい記事の標準の進め方', 'select', 'guided', '記事ごとに変更できます。保存済みの作業には影響しません。', array( 'guided' => '相談しながら作りたい', 'delegated' => 'なるべくAIにお任せ' ) ) ) );
+		), self::quality_fields(), self::image_fields(), array( 'default_interaction' => array( '新しい記事の標準の進め方', 'select', 'guided', '記事ごとに変更できます。保存済みの作業には影響しません。', array( 'guided' => '相談しながら作りたい', 'delegated' => 'なるべくAIにお任せ' ) ) ) );
 	}
 
 	/** New controls remain in the existing site option/CSV scope; legacy text is never rewritten. */
@@ -72,7 +72,18 @@ final class Config {
 		);
 	}
 
-	public static function site_info_fields(): array { return array_slice( self::site_fields(), 0, 11, true ) + array_intersect_key( self::site_fields(), array_flip( array( 'default_interaction' ) ) ); }
+	/** Site defaults supplement, rather than erase, existing free-text image policies. */
+	public static function image_fields(): array {
+		return array(
+			'image_style' => array( '画像の標準スタイル', 'select', 'auto', '', array( 'auto' => '記事に合わせる', 'illustration' => 'イラスト中心', 'photo' => '写真中心' ) ),
+			'image_style_notes' => array( '画像の雰囲気・補足指示', 'textarea', '', '色合い・タッチ・避けたい表現など。実際の活動写真をAI生成画像で代用しません。' ),
+			'image_layout' => array( '画像の標準構成・枚数', 'select', 'legacy', '従来の方針を使う場合は既存の記事の種類・自由入力を維持します。', array( 'legacy' => '従来の画像方針を使う', 'none' => '画像なし', 'intro' => '冒頭に1枚', 'intro_body' => '冒頭1枚＋本文画像', 'consult' => 'AIと相談して決める' ) ),
+			'image_body_count' => array( '本文画像の標準枚数', 'select', '2', '「冒頭1枚＋本文画像」の場合だけ使用します。冒頭画像は別の1枚です。', array( '1' => '1枚', '2' => '2枚', '3' => '3枚', '4' => '4枚', '5' => '5枚' ) ),
+			'image_intro_placement' => array( '冒頭画像の表示方法', 'select', 'theme', 'テーマのアイキャッチ表示位置は管理者が確認してください。プラグインがテーマの表示を自動判定・変更することはありません。', array( 'theme' => 'テーマのアイキャッチ表示に任せる', 'body' => '本文先頭に配置する' ) ),
+		);
+	}
+
+	public static function site_info_fields(): array { return array_slice( self::site_fields(), 0, 11, true ) + array_intersect_key( self::site_fields(), array_flip( array( 'default_interaction' ) ) ) + self::image_fields(); }
 	public static function quality_legacy_fields(): array { return array_slice( self::site_fields(), 11, 9, true ); }
 	public static function safety_fields(): array { return array_intersect_key( self::site_fields(), array_flip( array( 'forbidden_words', 'locked_rules', 'publication_checks', 'min_section', 'min_article' ) ) ); }
 
@@ -115,7 +126,7 @@ final class Config {
 
 	public static function workflow_fields(): array {
 		return array(
-			'reference_policy' => array( '既存記事の確認', 'select', 'inherit', 'SEO記事では執筆前の確認を推奨します。サイト全体で無効の場合は利用できません。', array( 'inherit' => 'サイト設定に従う', 'off' => '使わない', 'optional' => '任意で確認する', 'required' => '執筆前に確認する' ) ),
+			'reference_policy' => array( '既存記事の確認', 'select', 'inherit', 'SEO記事では執筆前の確認を推奨します。サイト全体で無効の場合は利用できません。', array( 'inherit' => 'サイト設定に従う', 'off' => '使わない', 'standard' => '標準で参考にする', 'optional' => '任意で確認する', 'required' => '執筆前に確認する' ) ),
 			'purpose_type' => array( '制作ルールの基本タイプ', 'select', 'general', '記事の種類の名前は自由に設定できます。この5区分から近い制作ルールを選びます。', array( 'general' => '一般ブログ・コラム', 'notice' => 'お知らせ・告知', 'report' => '活動報告・事例', 'event' => 'イベント案内', 'seo' => 'SEO記事' ) ),
 			'workflow_policy' => array( '制作モードの決め方', 'select', 'recommend', '', array( 'recommend' => 'AIが記事内容から推奨', 'fixed' => '管理者が固定' ) ),
 			'workflow_mode' => array( '固定する制作モード', 'select', 'simple', '「管理者が固定」の場合に使用します。固定しても重要な事実確認は省略しません。', array( 'simple' => '簡易作成', 'interview' => 'ヒアリング重視', 'research' => 'リサーチ重視' ) ),
@@ -126,6 +137,8 @@ final class Config {
 		return array(
 			'planning_mode' => array( '相談の始め方', 'select', 'topic', '', array( 'topic' => '書きたいことが決まっている', 'ideas' => '何を書くかから相談したい', 'titles' => '記事のネタ・タイトルだけ相談したい' ) ),
 			'interaction_mode' => array( '記事の進め方', 'select', 'guided', '', array( 'guided' => '相談しながら作りたい', 'delegated' => 'なるべくAIにお任せ', 'proofread' => '添削だけしてほしい' ) ),
+			'image_choice' => array( '今回の画像', 'select', 'site', '', array( 'site' => '初期設定を使う', 'consult' => 'AIと相談して決める', 'custom' => '自由入力で指定する' ) ),
+			'image_request' => array( '今回の画像の希望', 'textarea', '', '例：冒頭1枚と説明用イラスト2枚。画像不要、手持ち写真を使う、なども指定できます。' ),
 			'source_draft' => array( '添削したい原稿', 'textarea', '', '平文で3万バイト以内。書式ではなく文章を添削します。' ),
 			'reference_summary' => array( '公開記事の概要をAIへ渡す', 'select', 'no', '管理者が許可した公開記事の最新50件まで。本文全体は送りません。', array( 'no' => '渡さない', 'yes' => 'タイトル・分類・要約を渡す' ) ),
 			'theme' => array( '記事のテーマ', 'text', '', '相談プロンプトを生成する際は入力してください。条件だけなら空欄でも保存できます。' ),

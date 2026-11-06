@@ -33,12 +33,12 @@ final class ImportScreen {
 			$source = file_get_contents( $file['tmp_name'], false, null, 0, Csv::MAX_BYTES + 1 );
 			if ( false === $source ) { $this->finish( new \WP_Error( 'upload', 'CSVを読み込めませんでした。' ) ); }
 		} elseif ( isset( $_POST['csv_text'] ) && is_string( $_POST['csv_text'] ) ) { $source = wp_unslash( $_POST['csv_text'] ); }
-		$this->finish( Importer::preview( $source ) );
+		$this->finish( Importer::preview( $source ), 'import', array( 'stage' => 'files' ) );
 	}
 	public function commit(): void {
 		$this->guard( 'aaa_csv_commit' );
 		if ( ! isset( $_POST['confirmed'] ) || '1' !== $_POST['confirmed'] ) { $this->finish( new \WP_Error( 'confirm', 'プレビューと警告を確認してください。' ) ); }
-		$this->finish( Importer::commit( Store::text( wp_unslash( $_POST['token'] ?? '' ) ), '1' === ( $_POST['confirmed_missing'] ?? '' ), '1' === ( $_POST['confirmed_dummy'] ?? '' ) ) );
+		$this->finish( Importer::commit( Store::text( wp_unslash( $_POST['token'] ?? '' ) ), '1' === ( $_POST['confirmed_missing'] ?? '' ), '1' === ( $_POST['confirmed_dummy'] ?? '' ) ), 'import', array( 'stage' => 'result' ) );
 	}
 	public function bind(): void {
 		$this->guard( 'aaa_csv_bind' );
@@ -141,18 +141,36 @@ final class ImportScreen {
 	}
 
 	private static function requirements_present( array $stage ): bool { return (bool) Importer::requirements( $stage ); }
+	private static function previous_import( array $stage ): void {
+		if ( ! $stage ) { return; }
+		$state = $stage['state'] ?? '';
+		if ( ! in_array( $state, array( 'preview', 'complete' ), true ) ) { echo '<p class="aaa-warning">前回の取り込みが実行済みで、結果を確認できない状態です。同じCSVを再取り込みする前に投稿一覧を確認してください。</p>'; return; }
+		$pending = 'preview' === $state;
+		$items = $pending ? ( $stage['check']['items'] ?? array() ) : ( $stage['report'] ?? array() );
+		$titles = array();
+		foreach ( array_slice( $items, 0, 3 ) as $item ) { $titles[] = Store::text( $item[ $pending ? 'post_title' : 'title' ] ?? '' ); }
+		echo '<details data-aaa-previous-import><summary>' . esc_html( $pending ? '作業途中の取り込みを再開する' : '前回の取り込み結果を見る' ) . '</summary><p>' . esc_html( implode( '、', $titles ) ) . '</p><p>前回の取り込み情報は最大30分間保持します。この画面を開くだけでは、画像の対応付けや作成済み記事を変更しません。</p><p><a class="button" href="' . esc_url( Admin::url( 'import', array( 'stage' => $pending ? 'files' : 'result' ) ) ) . '">' . esc_html( $pending ? '保持中のCSV・画像対応付けを再開する' : '前回の結果を確認する' ) . '</a></p></details>';
+	}
 	public static function render(): void {
-		$review = 'review' === Views::get( 'stage' );
-		Views::journey( $review || 'complete' === ( Importer::session()['state'] ?? '' ) ? 4 : 3 );
-		echo '<p>ChatGPTから受け取った記事CSVと画像・PDFを使って、下書きを作ります。内容を確認してから登録でき、ここでは公開されません。</p><details><summary>使えるファイル・以前の下書きの更新について</summary><p>記事CSV v1/v2、UTF-8・1MB以下・20記事まで対応します。初期設定・詳細設定CSVは管理者設定で読み込んでください。以前の下書きは<a href="' . esc_url( Admin::url( 'update' ) ) . '">下書きの更新</a>で対象と差分を確認します。</p></details>';
-		$current_stage = Importer::session();
-		if ( $current_stage ) { echo '<p class="aaa-current-task">' . esc_html( 'complete' === ( $current_stage['state'] ?? '' ) ? '取り込み処理が終わりました。下の結果を確認してください。' : 'CSVを読み込みました。下の画像・PDFと本文を確認してください。' ) . '</p><details><summary>別の記事CSVを選ぶ・読み直す</summary>'; }
+		$stage = Importer::session(); $requested = Views::get( 'stage' ); $state = $stage['state'] ?? '';
+		$review = 'review' === $requested && 'preview' === $state;
+		$result = 'result' === $requested && 'complete' === $state;
+		$active = $review || $result || ( 'files' === $requested && 'preview' === $state );
+		// Opening the import entry never resumes an old session or mutates it.
+		Views::journey( $review || $result ? 4 : 3, true );
+		echo '<p>記事CSVと画像・PDFから下書きを作ります。STEP1の概要入力やSTEP2のAI相談をせず、この画面から取り込みだけ利用できます。内容を確認してから登録し、ここでは公開されません。</p><details><summary>使えるファイル・以前の下書きの更新について</summary><p>記事CSV v1/v2、UTF-8・1MB以下・20記事まで対応します。初期設定・詳細設定CSVは管理者設定で読み込んでください。以前の下書きは<a href="' . esc_url( Admin::url( 'update' ) ) . '">下書きの更新</a>で対象と差分を確認します。</p></details>';
+		if ( $active ) { echo '<p class="aaa-current-task">' . esc_html( $result ? '取り込み処理が終わりました。下の結果を確認してください。' : 'CSVを読み込みました。下の画像・PDFと本文を確認してください。' ) . '</p><details><summary>別の記事CSVを選ぶ・読み直す</summary>'; }
+		else { echo '<h2>STEP3：完成ファイルを取り込む</h2><p>今回取り込む記事CSVを選んでください。前回の取り込み結果ではなく、新しいCSVの読み込みから始めます。</p>'; }
 		self::form( 'aaa_csv_preview', true );
+		if ( 'preview' === $state ) { echo '<p class="aaa-warning">作業途中の取り込みがあります。新しいCSVを読み込むと、保持中の比較・画像対応付けの作業が新しいCSVに切り替わります。' . esc_html( $active ? '今の作業を続ける場合はCSVの読み直しは不要です。' : '続けたい場合は「作業途中の取り込みを再開する」を選んでください。' ) . '作成済み記事・メディアは削除しません。</p>'; }
 		echo '<h2>ChatGPTから受け取った記事CSVを選ぶ</h2><div class="aaa-csv-drop aaa-upload-area" data-aaa-csv-drop><p class="aaa-upload-title">記事CSVをここにドラッグ＆ドロップ</p><p>または、下のボタンから選択してください。</p><label class="button aaa-main-action" for="aaa-csv-file" data-aaa-csv-pick hidden>記事CSVを選ぶ</label><input id="aaa-csv-file" type="file" name="aaa_csv" accept=".csv,text/csv" aria-describedby="aaa-csv-help aaa-csv-selection"><p id="aaa-csv-help">.csvファイル1点・1MB以下。ZIPの場合は、先にパソコンで展開してください。</p><p id="aaa-csv-selection" data-aaa-csv-selection role="status" aria-live="polite">まだファイルを選んでいません。</p><p data-aaa-csv-error role="alert" hidden></p></div><p>ファイルを選んだだけでは保存されません。次のボタンで内容を読み込みます。</p><details><summary>上級者向け：CSV本文を貼り付ける</summary><label for="aaa-csv-text">CSV本文（ファイルを選んだ場合はファイルを優先）</label><textarea id="aaa-csv-text" name="csv_text" class="large-text code" rows="8"></textarea></details>';
 		submit_button( '選んだCSVを読み込んで次へ', 'primary aaa-main-action' ); echo '</form><details><summary>専用CSVのサンプル</summary><p>架空の検証用原稿です。投稿先・スラッグ・管理ID等を用途に合わせて変更してください。内容を表計算ソフトで編集するときは文字列として扱ってください。</p><textarea class="large-text code" rows="5" readonly aria-label="検証用CSVサンプル">' . esc_textarea( Csv::example() ) . '</textarea></details>';
-		if ( $current_stage ) { echo '</details>'; }
-		$stage = Importer::session(); if ( ! $stage ) { return; }
-		if ( 'complete' === $stage['state'] ) {
+		if ( $active ) { echo '</details>'; }
+		if ( ! $active ) {
+			if ( in_array( $requested, array( 'files', 'review', 'result' ), true ) ) { echo '<p class="aaa-warning">指定した取り込みの段階を表示できません。期限切れや処理済みの場合があります。新しいCSVを選ぶか、保持されている作業・結果を確認してください。</p>'; }
+			self::previous_import( $stage ); return;
+		}
+		if ( $result ) {
 			echo '<h2>STEP4：下書きを確認</h2><p>取り込み結果です。下書きを開いて、記事と画像を確認してください。</p><ul>';
 			foreach ( $stage['report'] as $item ) {
 				echo '<li>' . esc_html( $item['title'] ) . '：' . ( $item['id'] ? '下書きID ' . esc_html( $item['id'] ) : '登録なし' );
@@ -165,7 +183,7 @@ final class ImportScreen {
 		}
 		if ( 'preview' !== $stage['state'] ) { echo '<p class="aaa-warning">このプレビューは実行済みです。結果が表示されない場合、再取り込みの前に投稿一覧を確認してください。</p>'; return; }
 		if ( ! $review ) { self::materials( $stage ); foreach ( $stage['check']['errors'] as $error ) { echo '<p class="aaa-warning">' . esc_html( $error ) . '</p>'; } if ( ! self::requirements_present( $stage ) && ! $stage['check']['errors'] && $stage['check']['items'] ) { echo '<p><a class="button button-primary aaa-main-action" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'review' ) ) ) . '">内容を確認して次へ</a></p>'; } return; }
-		echo '<p><a class="button" href="' . esc_url( Admin::url( 'import' ) ) . '">STEP3へ戻って画像・PDFを変更</a></p>';
+		echo '<p><a class="button" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'files' ) ) ) . '">STEP3へ戻って画像・PDFを変更</a></p>';
 		echo '<h2>内容を確認して下書き保存</h2><p>有効期限は検証から30分です。設定や既存投稿の変更時は再検証が必要です。</p>';
 		foreach ( $stage['check']['errors'] as $error ) { echo '<p class="aaa-warning">' . esc_html( $error ) . '</p>'; }
 		foreach ( $stage['check']['items'] as $item ) {

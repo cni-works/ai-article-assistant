@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** Local, deterministic prompt assembly. No external AI calls are made here. */
 final class Prompt {
-	const VERSION = 'P1-draft.17';
+	const VERSION = 'P1-draft.20';
 
 	public static function prepare() {
 		$article = Store::article();
@@ -43,6 +43,12 @@ final class Prompt {
 			return $rules;
 		}
 		$context['effective_rules'] = $rules;
+		if ( 'custom' !== ( $details['image_choice'] ?? 'site' ) ) { unset( $details['image_request'] ); }
+		$context['image_plan'] = Store::image_context( $context['site'], $details );
+		if ( 'legacy' !== $context['image_plan']['layout'] && 'proofread' !== Consultation::mode( $article ) ) {
+			unset( $context['effective_rules']['images'], $context['quality']['effective_article_rules']['images'] );
+		}
+
 		$context['profile'] = array_intersect_key( $profile, array_flip( array( 'name', 'purpose', 'purpose_type', 'workflow_policy', 'workflow_mode' ) ) );
 		// Never include unrecognised persisted keys or an unfiltered personal profile.
 		unset( $details['reference_summary'] );
@@ -85,18 +91,11 @@ final class Prompt {
 				}
 			}
 		}
-		$context['field_labels'] = array();
-		foreach ( array_merge( Config::site_fields(), Config::article_fields(), Config::rules(), Config::workflow_fields(), Config::term_fields() ) as $key => $field ) {
-			$context['field_labels'][ $key ] = $field[0];
-			if ( isset( $field[4] ) ) {
-				$context['field_labels'][ $key ] = array( 'label' => $field[0], 'choices' => $field[4] );
-			}
-		}
 		$interaction = Consultation::mode( $article );
 		$ids = 'guided' === $interaction ? array( 'common', 'guide', 'router', 'japanese', 'purpose-' . $profile['purpose_type'] ) : array( 'common', 'japanese', 'interaction-' . $interaction );
 		if ( 'proofread' === $interaction ) {
 			$context['article'] = array_intersect_key( $context['article'], array_flip( array( 'planning_mode', 'interaction_mode', 'source_draft', 'audience', 'article_key', 'post_type', 'terms' ) ) );
-			$context['profile_questions'] = array(); $context['profile_guidance'] = array(); $context['media'] = array(); $context['acf'] = array( 'fields' => array() ); $context['effective_rules'] = array(); $context['quality']['effective_article_rules'] = array(); $context['quality']['article_override_keys'] = array(); $context['profile'] = array();
+			$context['profile_questions'] = array(); $context['profile_guidance'] = array(); $context['media'] = array(); $context['acf'] = array( 'fields' => array() ); $context['effective_rules'] = array(); $context['quality']['effective_article_rules'] = array(); $context['quality']['article_override_keys'] = array(); $context['profile'] = array(); unset( $context['image_plan'] );
 		}
 		if ( $references ) { $ids[] = 'existing-articles'; }
 		if ( 'fixed' === $profile['workflow_policy'] && 'proofread' !== $interaction ) {
@@ -113,7 +112,7 @@ final class Prompt {
 			if ( false === $text || '' === trim( $text ) ) {
 				return new \WP_Error( 'module', '相談ルールを読み込めませんでした。' );
 			}
-			$modules[ $id ] = array( 'version' => array( 'common' => '4', 'japanese' => '2', 'guide' => '6', 'review' => '4', 'image-production' => '4' )[ $id ] ?? '1', 'sha256' => hash( 'sha256', $text ), 'text' => trim( $text ) );
+			$modules[ $id ] = array( 'version' => array( 'common' => '6', 'japanese' => '2', 'guide' => '7', 'review' => '5', 'image-production' => '6', 'interaction-delegated' => '2', 'existing-articles' => '2' )[ $id ] ?? '1', 'sha256' => hash( 'sha256', $text ), 'text' => trim( $text ) );
 		}
 		$encoded = wp_json_encode( array( self::VERSION, $context, $modules ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 		if ( false === $encoded || strlen( $encoded ) > 250000 ) {
@@ -142,6 +141,9 @@ final class Prompt {
 			return new \WP_Error( 'changed', '確認後に設定が変更されました。画面を開き直し、内容を確認してから生成してください。' );
 		}
 		$text = '# WordPressの記事制作相談' . "\nプロンプト版：" . self::VERSION . "\n\n";
+		if ( 'ideas' === ( $prepared['context']['article']['planning_mode'] ?? '' ) ) {
+			$text .= "## 最初の返信はテーマの提案\nサイトの目的と読者に合うテーマを3案程度提示し、各案に想定読者と答える疑問を添えてください。既存記事の参照情報があれば、近い記事のタイトルと今回の違いを概要で分かる範囲で示し、続編と別の切り口を検討してください。近い記事を確認できない場合は確認範囲を示し、存在しない記事を作りません。テーマの選択を待ち、本文や画像制作は始めません。\n\n";
+		}
 		$manifest = array();
 		foreach ( $prepared['modules'] as $id => $module ) {
 			$text .= $module['text'] . "\n\n";

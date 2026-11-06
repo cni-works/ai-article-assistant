@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** AI-assisted setup uses a separate, patch-only CSV and never accepts option names. */
 final class Setup {
-	const VERSION = 'setup-prompt.9';
+	const VERSION = 'setup-prompt.10';
 	const BACKUP = 'aaa_setup_backup_v1';
 	public static function allowed(): bool { return Transfer::allowed(); }
 	public static function key(): string { return 'aaa_setup_' . get_current_blog_id() . '_' . get_current_user_id(); }
@@ -78,7 +78,7 @@ final class Setup {
 		if ( false === $flow || '' === trim( $flow ) ) { return ''; }
 		$schema = array();
 		$fields_by_scope = 'details' === $mode
-			? array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) )
+			? array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields(), Config::image_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) )
 			: array( 'site' => Config::site_fields(), 'profile' => Config::profile_fields(), 'term' => Config::term_fields() );
 		if ( 'basic' === $mode ) { $fields_by_scope['term_create'] = TermCreation::fields(); }
 		foreach ( $fields_by_scope as $scope => $fields ) {
@@ -214,7 +214,7 @@ final class Setup {
 				$changes[] = array( 'scope' => 'term_create', 'target' => $alias, 'target_label' => $plan['name'] . ( $existing ? ' / ID:' . $plan['existing_id'] : '' ), 'operation' => $existing ? '変更なし' : '新規作成', 'field_key' => $field, 'field' => TermCreation::fields()[ $field ][0], 'baseline' => $existing ? $value : '', 'before' => $existing ? $value : '', 'after' => $value, 'conflict' => false );
 			}
 		}
-		$detail_fields = array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) );
+		$detail_fields = array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields(), Config::image_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) );
 		$mode = 'details';
 		foreach ( $rows as $row ) { if ( ! isset( $detail_fields[ $row['scope'] ][ $row['field'] ] ) || str_starts_with( $row['target'], 'new:' ) ) { $mode = 'basic'; break; } }
 		return array( 'before' => $before, 'after' => $after, 'changes' => $changes, 'new_ids' => $new_ids, 'term_creations' => $creations, 'reused_terms' => $reused, 'csv_mode' => $mode, 'rebased' => $rebased, 'conflicts' => count( array_filter( $changes, static function ( $change ) { return $change['conflict']; } ) ) );

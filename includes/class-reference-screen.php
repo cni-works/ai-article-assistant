@@ -28,12 +28,12 @@ final class ReferenceScreen {
 		$settings = Reference::settings(); $progress = Reference::progress();
 		echo '<details><summary>管理者：参照範囲と索引作成</summary><p>投稿先とは別に、比較に使う投稿タイプを指定します。公開済み・パスワードなしの記事のみ対象です。外部AIへ自動送信しません。会員限定表示等を別プラグインで設定している記事は、選択内容を確認して除外してください。参照設定・索引・選択内容は設定移行JSONに含みません。</p>';
 		self::form( 'settings' ); echo '<input type="hidden" name="revision" value="' . esc_attr( Reference::hash( $settings ) ) . '"><label>サイトの既存記事確認方針 <select name="policy">';
-		foreach ( array( 'off' => '使わない', 'optional' => '任意で確認する', 'required' => '執筆前に確認する' ) as $value => $label ) { echo '<option value="' . esc_attr( $value ) . '" ' . selected( $settings['policy'], $value, false ) . '>' . esc_html( $label ) . '</option>'; }
-		echo '</select></label><p>記事の種類ごとに変更できます。ただしサイト全体で無効の場合は利用できません。</p>';
+		foreach ( array( 'off' => '使わない', 'standard' => '標準で参考にする', 'optional' => '任意で確認する', 'required' => '執筆前に確認する' ) as $value => $label ) { echo '<option value="' . esc_attr( $value ) . '" ' . selected( $settings['policy'], $value, false ) . '>' . esc_html( $label ) . '</option>'; }
+		echo '</select></label><p>「標準で参考にする」では公開記事のタイトル・カテゴリー・抜粋などが相談文に入ります。索引作成や記事の選択は不要です。詳しく比較するときは検索・選択を使います。記事の種類ごとに変更できます。ただしサイト全体で無効の場合は利用できません。</p>';
 		foreach ( Reference::types() as $type => $object ) { echo '<p><label><input type="checkbox" name="types[]" value="' . esc_attr( $type ) . '" ' . checked( in_array( $type, $settings['types'], true ), true, false ) . '> ' . esc_html( $object->labels->name ) . '</label></p>'; }
 		submit_button( '参照範囲を保存' ); echo '</form>';
 		if ( 'off' !== $settings['policy'] && $settings['types'] ) {
-			echo '<p>索引は初回50件ずつ作成します。公開記事の保存時にも更新します。大きなサイトでは「次の50件」を繰り返してください。同時に大量の記事を追加・削除した場合は最初から再作成してください。完了は索引作成範囲の完了で、内容の比較完了ではありません。</p><p>作成状況：' . esc_html( ! $progress || ( $progress['scope'] ?? '' ) !== Reference::hash( $settings ) ? '未作成・参照範囲変更後の再作成待ち' : ( ! empty( $progress['complete'] ) ? '一巡完了' : '作成途中' ) . ' / 処理件数 ' . ( $progress['processed'] ?? 0 ) . ' / ' . ( $progress['updated_at'] ?? '' ) ) . '</p>';
+			echo '<p>個別に比較する記事を検索する場合は、索引を初回50件ずつ作成します。公開記事の保存時にも更新します。大きなサイトでは「次の50件」を繰り返してください。同時に大量の記事を追加・削除した場合は最初から再作成してください。完了は索引作成範囲の完了で、内容の比較完了ではありません。</p><p>作成状況：' . esc_html( ! $progress || ( $progress['scope'] ?? '' ) !== Reference::hash( $settings ) ? '未作成・参照範囲変更後の再作成待ち' : ( ! empty( $progress['complete'] ) ? '一巡完了' : '作成途中' ) . ' / 処理件数 ' . ( $progress['processed'] ?? 0 ) . ' / ' . ( $progress['updated_at'] ?? '' ) ) . '</p>';
 			self::form( 'batch' ); echo '<input type="hidden" name="revision" value="' . esc_attr( Reference::hash( array( $settings, $progress ) ) ) . '"><input type="hidden" name="restart" value="1">'; submit_button( '最初の50件から索引を作成する' ); echo '</form>';
 			if ( $progress && empty( $progress['complete'] ) && ( $progress['scope'] ?? '' ) === Reference::hash( $settings ) ) { self::form( 'batch' ); echo '<input type="hidden" name="revision" value="' . esc_attr( Reference::hash( array( $settings, $progress ) ) ) . '">'; submit_button( '次の50件を作成する' ); echo '</form>'; }
 		}

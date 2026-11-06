@@ -222,10 +222,11 @@ final class Store {
 		if ( '' !== $binding['post_type'] && $type !== $binding['post_type'] ) { return new \WP_Error( 'binding', '選んだ記事の種類に設定された投稿先を選択してください。' ); }
 		$answers = ProfileRuntime::answers( $profile_data, $raw['answers'] ?? ( $reuse ? ( $previous['answers'] ?? array() ) : array() ) );
 		if ( is_wp_error( $answers ) ) { return $answers; }
-		$article = self::sanitize( Config::article_fields(), array_replace( array_intersect_key( $previous, array_flip( array( 'source_draft', 'interaction_mode', 'reference_summary' ) ) ), $raw ) );
+		$article = self::sanitize( Config::article_fields(), array_replace( array_intersect_key( $previous, array_flip( array( 'source_draft', 'interaction_mode', 'reference_summary', 'image_choice', 'image_request' ) ) ), $raw ) );
 		if ( is_wp_error( $article ) ) {
 			return $article;
 		}
+		if ( 'titles' !== $article['planning_mode'] && 'proofread' !== $article['interaction_mode'] && 'custom' === $article['image_choice'] && '' === trim( $article['image_request'] ) ) { return new \WP_Error( 'image_request', '画像の希望を入力するか、初期設定・AIと相談を選んでください。' ); }
 		if ( 'proofread' === $article['interaction_mode'] && ( 'ideas' === $article['planning_mode'] || '' === trim( $article['source_draft'] ) ) ) { return new \WP_Error( 'proofread', '添削は「書きたいことが決まっている」を選び、原稿を入力してください。' ); }
 		if ( '' === $article['theme'] ) {
 			if ( 'proofread' === $article['interaction_mode'] && '' !== trim( $article['source_draft'] ) ) { $article['theme'] = '提供原稿の添削';
@@ -306,13 +307,30 @@ final class Store {
 		return array(
 			'version' => 'quality-rules.1',
 			'precedence' => '安全・事実確認・利用許可は常に優先。文章条件は記事個別指定＞記事の種類指定。サイトの独自指示は共通条件として併用し、推奨ルールより優先する。明示指示同士の矛盾は勝手に解消せず利用者へ確認する。推奨を追加しない設定でも、既存の自由入力や目的別条件は取り消さない。',
-			'mandatory' => array( '日時・料金・実績・資格・経験・意見・URL・出典を創作しない。', '未読の資料や未実施の調査を確認済みと報告しない。', '管理者の禁止事項・公開前チェック・本人情報の利用許可を守り、構成と原稿の承認を受ける。' ),
+			'mandatory' => array( '日時・料金・実績・資格・経験・意見・URL・出典を創作しない。', '未読の資料や未実施の調査を確認済みと報告しない。', '管理者の禁止事項・公開前チェック・本人情報の利用許可を守り、選択された進め方に従い、原稿の承認を受ける。' ),
 			'administrator_rules' => array_filter( array_intersect_key( $site, array_flip( array( 'forbidden_words', 'locked_rules', 'publication_checks' ) ) ), static function ( $value ) { return '' !== $value; } ),
 			'recommendations' => $recommendations,
 			'site_instructions' => array_filter( array_intersect_key( $site, Config::quality_legacy_fields() ), static function ( $value ) { return '' !== $value; } ),
 			'effective_article_rules' => $profile ? $active : array(),
 			'article_override_keys' => array_keys( array_intersect_key( $overrides, Config::rules() ) ),
 		);
+	}
+
+
+	/** Resolve from the captured site defaults; dormant free text is never an active instruction. */
+	public static function image_context( array $site, array $article ): array {
+		$site = self::sanitize( Config::image_fields(), array_intersect_key( $site, Config::image_fields() ) );
+		if ( is_wp_error( $site ) ) { $site = self::defaults( Config::image_fields() ); }
+		$choice = $article['image_choice'] ?? 'site';
+		$layout = 'site' === $choice ? $site['image_layout'] : ( 'custom' === $choice ? 'custom' : 'consult' );
+		$result = array( 'source' => $choice, 'layout' => $layout );
+		if ( 'none' === $layout ) { return $result; }
+		$result['style'] = $site['image_style'];
+		$result['style_notes'] = $site['image_style_notes'];
+		if ( 'intro_body' === $layout ) { $result['body_count'] = (int) $site['image_body_count']; }
+		if ( in_array( $layout, array( 'intro', 'intro_body' ), true ) ) { $result['intro_placement'] = $site['image_intro_placement']; }
+		if ( 'custom' === $layout ) { $result['request'] = $article['image_request'] ?? ''; }
+		return $result;
 	}
 
 	/** Context stays separate from locked rules so no individual field can replace them. */

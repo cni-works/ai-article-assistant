@@ -3,7 +3,7 @@ Contributors: CNI
 Tags: writing, draft, editorial
 Requires at least: 6.3
 Requires PHP: 8.0
-Stable tag: 0.1.1
+Stable tag: 0.1.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -157,6 +157,10 @@ UTF-8、1MB以下、1回20記事までです。本文は構造化JSONとし、�
 STEP3はCSV読み込みと画像・PDFの配置、STEP4は投稿先・分類・画像状態を確認して下書き保存です。完成イメージを大きく表示せず、必要なら本文と画像配置を開いて確認できます。テーマ適用後の表示・編集・保存は登録後の標準エディターで確認します。今回の変更は実WordPressと実ChatGPT対話では未検証です。
 
 == Changelog ==
+
+= 0.1.2 =
+* 既存記事を参考にしたテーマ提案と、お任せモードの進行を改善。
+* 画像の標準設定、カテゴリー確認、CSV取り込みの案内を改善。
 
 = 0.1.1 =
 * 初期設定CSVの不正な選択値に、行番号・対象・項目・入力値・使用可能な値を表示します。

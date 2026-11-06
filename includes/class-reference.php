@@ -19,15 +19,15 @@ final class Reference {
 		return array_filter( get_post_types( array( 'public' => true ), 'objects' ), static function ( $type ) { return 'attachment' !== $type->name && ! empty( $type->show_ui ) && is_post_type_viewable( $type ); } );
 	}
 	public static function settings(): array {
-		$raw = get_option( self::SETTINGS, array() ); $raw = is_array( $raw ) ? $raw : array();
-		return array( 'policy' => in_array( $raw['policy'] ?? '', array( 'off', 'optional', 'required' ), true ) ? $raw['policy'] : 'off', 'types' => array_values( array_intersect( is_array( $raw['types'] ?? null ) ? $raw['types'] : array(), array_keys( self::types() ) ) ) );
+		$raw = get_option( self::SETTINGS, array( 'policy' => 'standard', 'types' => array( 'post' ) ) ); $raw = is_array( $raw ) ? $raw : array();
+		return array( 'policy' => in_array( $raw['policy'] ?? '', array( 'off', 'standard', 'optional', 'required' ), true ) ? $raw['policy'] : 'off', 'types' => array_values( array_intersect( is_array( $raw['types'] ?? null ) ? $raw['types'] : array(), array_keys( self::types() ) ) ) );
 	}
 	public static function hash( $value ): string { return hash( 'sha256', wp_json_encode( $value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ); }
 	public static function save_settings( array $raw ) {
 		if ( ! current_user_can( 'manage_options' ) ) { return new \WP_Error( 'permission', '参照範囲の変更には管理者権限が必要です。' ); }
 		if ( ! is_string( $raw['revision'] ?? null ) || ! hash_equals( self::hash( self::settings() ), $raw['revision'] ) ) { return new \WP_Error( 'changed', '設定が変更されました。画面を開き直してください。' ); }
 		$types = $raw['types'] ?? array(); $policy = $raw['policy'] ?? '';
-		if ( ! is_string( $policy ) || ! in_array( $policy, array( 'off', 'optional', 'required' ), true ) || ! is_array( $types ) || array_filter( $types, static function ( $type ) { return ! is_string( $type ); } ) || array_diff( $types, array_keys( self::types() ) ) ) { return new \WP_Error( 'settings', '参照方針・投稿タイプを選び直してください。' ); }
+		if ( ! is_string( $policy ) || ! in_array( $policy, array( 'off', 'standard', 'optional', 'required' ), true ) || ! is_array( $types ) || array_filter( $types, static function ( $type ) { return ! is_string( $type ); } ) || array_diff( $types, array_keys( self::types() ) ) ) { return new \WP_Error( 'settings', '参照方針・投稿タイプを選び直してください。' ); }
 		if ( 'off' !== $policy && ! $types ) { return new \WP_Error( 'settings', '利用するときは参照する投稿タイプを選んでください。' ); }
 		return Store::write_option( self::SETTINGS, array( 'policy' => $policy, 'types' => array_values( array_unique( $types ) ) ) ) ? true : new \WP_Error( 'save', '参照設定を保存できませんでした。' );
 	}
@@ -35,7 +35,7 @@ final class Reference {
 		$settings = self::settings(); if ( 'off' === $settings['policy'] || ! $settings['types'] ) { return 'off'; }
 		$profile = ProfileRuntime::profile( Store::article() );
 		$value = $profile['reference_policy'] ?? 'inherit';
-		return in_array( $value, array( 'off', 'optional', 'required' ), true ) ? $value : $settings['policy'];
+		return in_array( $value, array( 'off', 'standard', 'optional', 'required' ), true ) ? $value : $settings['policy'];
 	}
 	public static function eligible( int $id ) {
 		$post = get_post( $id ); $settings = self::settings();
@@ -147,6 +147,9 @@ final class Reference {
 		$policy = self::policy(); if ( 'off' === $policy ) { return array(); }
 		if ( ! self::allowed() ) { return new \WP_Error( 'permission', '既存記事を参照する権限がありません。' ); }
 		$saved = self::selection(); $key = Store::article()['article_key'] ?? '';
+		if ( 'standard' === $policy && ( ! $saved || ( $saved['article_key'] ?? '' ) !== $key ) ) {
+			return array( 'policy' => $policy ) + Consultation::catalogue();
+		}
 		if ( ! $saved || ( $saved['article_key'] ?? '' ) !== $key ) { return 'required' === $policy ? new \WP_Error( 'reference', '既存記事の候補と参照範囲を確認して保存してください。選択0件でも確認を記録できます。' ) : array( 'policy' => $policy, 'status' => 'not_checked', 'items' => array() ); }
 		if ( ! hash_equals( $saved['criteria'], self::criteria() ) ) { return new \WP_Error( 'reference', 'テーマ・分類・参照設定が変わりました。既存記事を再確認して保存してください。' ); }
 		$items = array(); foreach ( $saved['items'] as $selection ) {
