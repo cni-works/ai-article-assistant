@@ -55,7 +55,9 @@ final class ImportScreen {
 	private static function export_key(): string { return 'aaa_export_' . get_current_blog_id() . '_' . get_current_user_id(); }
 	public function export(): void {
 		$this->guard( 'aaa_export_prompt' );
+		if ( Consultation::titles() ) { $this->finish( new \WP_Error( 'mode', '記事CSVの出力指示を作る場合は、記事制作へ進んでください。' ) ); }
 		$prepared = Prompt::prepare(); if ( is_wp_error( $prepared ) ) { $this->finish( $prepared ); }
+		if ( ! empty( $prepared['context']['new_import_blocked'] ) ) { $this->finish( new \WP_Error( 'article_key_used', CsvValidator::USED_KEY ) ); }
 		if ( ! hash_equals( $prepared['fingerprint'], Store::text( wp_unslash( $_POST['fingerprint'] ?? '' ) ) ) ) { $this->finish( new \WP_Error( 'changed', '記事条件が変わっています。保存した内容を確認し直してください。' ) ); }
 		$draft = isset( $_POST['approved_draft'] ) && is_string( $_POST['approved_draft'] ) ? trim( wp_unslash( $_POST['approved_draft'] ) ) : '';
 		if ( '1' !== ( $_POST['approved'] ?? '' ) || '' === $draft || strlen( $draft ) > 200000 || ! preg_match( '//u', $draft ) || false !== strpos( $draft, "\0" ) ) { $this->finish( new \WP_Error( 'draft', '承認済み原稿を20万バイト以下のUTF-8で入力し、原稿確認済みを選んでください。' ) ); }
@@ -79,6 +81,25 @@ final class ImportScreen {
 	public static function new_article_form(): void {
 		self::form( 'aaa_new_article' );
 		echo '<p><button class="button" type="submit" data-aaa-delete="保存中の記事条件と相談プロンプトを置き換えて、新しい管理IDの記事を開始します。必要な原稿は先に保存してください。">新しい記事を開始する</button></p></form>';
+	}
+
+	public static function conflict_posts( array $ids, bool $offer_draft_update = false ): void {
+		foreach ( $ids as $id ) {
+			$id = (int) $id;
+			$post = CsvValidator::visible_conflict_post( $id );
+			if ( ! $post ) { continue; }
+			echo '<p>' . esc_html( '該当記事：投稿ID ' . $id . '「' . $post->post_title . '」（' . $post->post_status . '）' ) . '</p>';
+			if ( $offer_draft_update && ! is_wp_error( DraftUpdate::target( $id ) ) ) {
+				echo '<p><a href="' . esc_url( Admin::url( 'update', array( 'post_id' => $id ) ) ) . '">この下書きの更新手順を開く</a></p>';
+			}
+			$edit = get_edit_post_link( $id );
+			if ( $edit ) { echo '<p><a href="' . esc_url( $edit ) . '">WordPressの編集画面を開く</a></p>'; }
+		}
+	}
+
+	private static function preview_errors( array $check ): void {
+		foreach ( $check['errors'] as $error ) { echo '<p class="aaa-warning">' . esc_html( $error ) . '</p>'; }
+		foreach ( $check['conflict_ids'] ?? array() as $ids ) { self::conflict_posts( $ids ); }
 	}
 	public static function export_form( array $prepared ): void {
 		echo '<section class="aaa-next-step"><h3>記事と画像が完成したら</h3><p>ChatGPTから受け取った最終CSVと画像を、次の画面へ取り込みます。ZIPの場合は先にパソコンで展開してください。</p><p><a class="button button-primary aaa-next-step-button" href="' . esc_url( Admin::url( 'import' ) ) . '"><span>STEP3：完成ファイルを取り込む</span><span class="aaa-next-arrow" aria-hidden="true">→</span></a></p><p>このボタンで、CSV・画像・PDFを登録する画面へ進みます。本文の貼り直しは不要です。</p></section><details><summary>代替手段：承認済みの原稿を貼り付けてCSV出力指示を作る</summary><p>従来の記事CSV v1と保存済み資料対応表を使う補助機能です。</p>';
@@ -178,14 +199,15 @@ final class ImportScreen {
 				if ( $link ) { echo ' <a href="' . esc_url( $link ) . '">下書きを確認する</a>'; }
 				$preview = $item['id'] && function_exists( 'get_preview_post_link' ) ? get_preview_post_link( $item['id'] ) : '';
 				if ( $preview ) { echo ' <a href="' . esc_url( $preview ) . '" target="_blank" rel="noopener noreferrer">画像付き下書きをプレビュー</a>'; }
-				foreach ( $item['errors'] as $error ) { echo '<p class="aaa-warning">' . esc_html( $error ) . '</p>'; } echo '</li>';
+				foreach ( $item['errors'] as $error ) { echo '<p class="aaa-warning">' . esc_html( $error ) . '</p>'; }
+				self::conflict_posts( $item['conflict_ids'] ?? array() ); echo '</li>';
 			} echo '</ul>'; return;
 		}
 		if ( 'preview' !== $stage['state'] ) { echo '<p class="aaa-warning">このプレビューは実行済みです。結果が表示されない場合、再取り込みの前に投稿一覧を確認してください。</p>'; return; }
-		if ( ! $review ) { self::materials( $stage ); foreach ( $stage['check']['errors'] as $error ) { echo '<p class="aaa-warning">' . esc_html( $error ) . '</p>'; } if ( ! self::requirements_present( $stage ) && ! $stage['check']['errors'] && $stage['check']['items'] ) { echo '<p><a class="button button-primary aaa-main-action" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'review' ) ) ) . '">内容を確認して次へ</a></p>'; } return; }
+		if ( ! $review ) { self::materials( $stage ); self::preview_errors( $stage['check'] ); if ( ! self::requirements_present( $stage ) && ! $stage['check']['errors'] && $stage['check']['items'] ) { echo '<p><a class="button button-primary aaa-main-action" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'review' ) ) ) . '">内容を確認して次へ</a></p>'; } return; }
 		echo '<p><a class="button" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'files' ) ) ) . '">STEP3へ戻って画像・PDFを変更</a></p>';
 		echo '<h2>内容を確認して下書き保存</h2><p>有効期限は検証から30分です。設定や既存投稿の変更時は再検証が必要です。</p>';
-		foreach ( $stage['check']['errors'] as $error ) { echo '<p class="aaa-warning">' . esc_html( $error ) . '</p>'; }
+		self::preview_errors( $stage['check'] );
 		foreach ( $stage['check']['items'] as $item ) {
 			echo '<h3>' . esc_html( $item['post_title'] ) . '</h3><details><summary>投稿先・分類・ファイルの詳細</summary><p>' . esc_html( $item['post_type'] . ' / ' . $item['post_name'] . ' / 下書き / 本文 ' . $item['length'] . '文字' ) . '</p>';
 			$labels = array();

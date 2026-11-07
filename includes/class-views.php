@@ -312,7 +312,9 @@ final class Views {
 			return;
 		}
 		self::journey( 1 );
-		if ( in_array( $requested, array( '2', '4' ), true ) || '1' === self::get( 'prompt_pending' ) ) {
+		if ( is_wp_error( $record ) && 'article_key_used' === $record->get_error_code() ) {
+			self::used_article_notice( $article['article_key'] );
+		} elseif ( in_array( $requested, array( '2', '4' ), true ) || '1' === self::get( 'prompt_pending' ) ) {
 			echo '<p class="aaa-warning">入力内容は保存しましたが、相談文の準備が完了していません。内容を確認して、もう一度下のボタンを押してください。' . esc_html( is_wp_error( $record ) ? $record->get_error_message() : '概要を確認して、下のボタンから準備してください。' ) . '</p>';
 			if ( 'off' !== Reference::policy() ) { echo '<p><a href="' . esc_url( Admin::url( 'references' ) ) . '">既存記事の確認を行う</a>（確認後、この画面に戻って準備してください）</p>'; }
 		}
@@ -414,6 +416,13 @@ final class Views {
 		echo '</select></p>';
 	}
 
+	private static function used_article_notice( string $key ): void {
+		echo '<section class="aaa-card"><h2>この作業の管理IDは登録済みです</h2><p class="aaa-warning">' . esc_html( CsvValidator::USED_KEY ) . '</p>';
+		ImportScreen::new_article_form();
+		ImportScreen::conflict_posts( CsvValidator::key_conflicts( $key ), true );
+		echo '</section>';
+	}
+
 	private static function prompt(): void {
 		$prepared = Prompt::prepare();
 		if ( is_wp_error( $prepared ) ) { echo '<p class="aaa-warning">' . esc_html( $prepared->get_error_message() ) . '</p>'; return; }
@@ -436,6 +445,10 @@ final class Views {
 		if ( 'off' !== Reference::policy() ) { echo '<p><a href="' . esc_url( Admin::url( 'references' ) ) . '">既存記事の参照内容を確認する</a></p>'; }
 		self::form( 'generate_prompt' ); self::hidden( 'fingerprint', $prepared['fingerprint'] );
 		echo '<p><button type="submit" class="button" data-aaa-generate>現在の設定で相談文を作り直す</button></p></form></details>';
+		if ( ! empty( $prepared['context']['new_import_blocked'] ) ) {
+			self::used_article_notice( $prepared['context']['article']['article_key'] );
+			return;
+		}
 		if ( ! Consultation::titles() ) { if ( 'proofread' === Consultation::mode() ) { echo '<p>修正版をコピーして終了できます。WordPressへ取り込みたい場合だけ、ChatGPTへ記事CSVの出力を依頼してください。</p><details><summary>修正版を新規下書きへ取り込む（任意）</summary>'; } ImportScreen::export_form( $prepared ); if ( 'proofread' === Consultation::mode() ) { echo '</details>'; } }
 	}
 

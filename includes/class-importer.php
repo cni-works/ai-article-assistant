@@ -92,7 +92,8 @@ final class Importer {
 			if ( $stage['check']['errors'] ) { return new \WP_Error( 'invalid', 'CSVにエラーがあります。修正して検証し直してください。' ); }
 			$rows = Csv::parse( $stage['source'] ); if ( is_wp_error( $rows ) ) { return $rows; }
 			$check = CsvValidator::check( $rows, 0, $stage['bindings'] ?? array(), $stage['image_options'] ?? array() );
-			if ( $check['errors'] || ! hash_equals( $stage['check']['fingerprint'], $check['fingerprint'] ) ) { return new \WP_Error( 'changed', '確認後に投稿・分類・権限・品質設定が変更されました。CSVを検証し直してください。' ); }
+			if ( $check['errors'] ) { return new \WP_Error( 'changed', '確認後にCSVの検証結果が変わりました。' . implode( ' ', $check['errors'] ) ); }
+			if ( ! hash_equals( $stage['check']['fingerprint'], $check['fingerprint'] ) ) { return new \WP_Error( 'changed', '確認後に投稿・分類・権限・品質設定が変更されました。CSVを検証し直してください。' ); }
 			if ( self::dummy( $check ) && ! $confirm_dummy ) { return new \WP_Error( 'dummy', 'ダミー画像で仮配置する内容を確認し、公開前の差し替え確認を承認してください。' ); }
 			if ( in_array( '2', array_column( $rows, 'schema_version' ), true ) && self::missing( $check ) && ! $confirm_missing ) { return new \WP_Error( 'missing', '未登録の画像・PDFがあります。追加するか、未配置の確認用段落を残して下書き登録することを承認してください。' ); }
 			$stage['state'] = 'consumed'; unset( $stage['source'] );
@@ -100,7 +101,12 @@ final class Importer {
 			if ( self::session() !== $stage ) { return new \WP_Error( 'save', '実行状態を保存できないため、登録を中止しました。' ); }
 			$report = array();
 			foreach ( $check['items'] as $item ) {
-				if ( CsvValidator::duplicate( $item['article_key'], $item['post_type'], $item['post_name'] ) ) { $report[] = array( 'title' => $item['post_title'], 'id' => 0, 'errors' => array( '実行直前に重複を検出しました。登録しませんでした。' ) ); continue; }
+				$conflicts = CsvValidator::conflicts( $item['article_key'], $item['post_type'], $item['post_name'] );
+				$messages = CsvValidator::conflict_messages( $conflicts, $item['post_type'], $item['post_name'] );
+				if ( $messages ) {
+					$report[] = array( 'title' => $item['post_title'], 'id' => 0, 'errors' => $messages, 'conflict_ids' => array_unique( array_merge( $conflicts['key'], $conflicts['slug'] ) ) );
+					continue;
+				}
 				$post = array_intersect_key( $item, array_flip( array( 'post_title', 'post_excerpt', 'post_content', 'post_name', 'post_type' ) ) );
 				$post['post_status'] = 'draft'; $post['post_author'] = get_current_user_id();
 				$post['meta_input'] = array( '_aaa_article_key' => $item['article_key'], '_aaa_import_token' => $token, '_aaa_seo_v1' => $item['seo'] );
@@ -109,6 +115,8 @@ final class Importer {
 				$id = wp_insert_post( wp_slash( $post ), true );
 				if ( is_wp_error( $id ) || ! $id ) { $report[] = array( 'title' => $item['post_title'], 'id' => 0, 'errors' => array( is_wp_error( $id ) ? $id->get_error_message() : '下書きを作成できませんでした。' ) ); continue; }
 				$errors = array();
+				$saved_post = get_post( $id );
+				if ( ! $saved_post || $saved_post->post_name !== $item['post_name'] ) { $errors[] = '指定したスラッグと保存結果が一致しません。作成された下書きのスラッグを確認してください。'; }
 				$errors = array_merge( $errors, Acf::write( (int) $id, $item['acf'], $item['post_type'] ) );
 				if ( $item['thumbnail'] ) {
 					$shared_dummy = (bool) array_filter( $item['media'], static function ( $media ) use ( $item ) { return ! empty( $media['is_placeholder'] ) && ( $media['attachment_id'] ?? 0 ) === $item['thumbnail']; } );

@@ -4,10 +4,54 @@ namespace AAA;
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class CsvValidator {
-	public static function duplicate( string $key, string $type, string $slug, int $except = 0 ): bool {
-		$ids = get_posts( array( 'post_type' => 'any', 'post_status' => array_keys( get_post_stati() ), 'posts_per_page' => 2, 'fields' => 'ids', 'meta_key' => '_aaa_article_key', 'meta_value' => $key, 'suppress_filters' => true ) );
+	public const USED_KEY = 'この管理IDは既存の記事で使用されています。新規記事を登録する場合は「新しい記事を開始する」から相談文を作り直してください。既存の下書きを修正する場合は下書き更新を利用してください。';
+
+	public static function key_conflicts( string $key, int $except = 0 ): array {
+		if ( '' === $key ) { return array(); }
+		$types = array_diff( array_keys( get_post_types( array(), 'objects' ) ), array( 'revision' ) );
+		$ids = get_posts( array(
+			'post_type' => array_values( $types ),
+			'post_status' => array_keys( get_post_stati() ),
+			'post__not_in' => $except ? array( $except ) : array(),
+			'posts_per_page' => 2,
+			'fields' => 'ids',
+			'meta_key' => '_aaa_article_key',
+			'meta_value' => $key,
+			'suppress_filters' => true,
+		) );
+		return array_values( array_diff( array_map( 'intval', $ids ), array( $except ) ) );
+	}
+
+	private static function slug_conflict( string $type, string $slug, int $except ): int {
 		$path = get_page_by_path( $slug, OBJECT, array( $type ) );
-		return (bool) array_diff( array_map( 'intval', $ids ), array( $except ) ) || ( $path && (int) $path->ID !== $except );
+		return $path && (int) $path->ID !== $except ? (int) $path->ID : 0;
+	}
+
+	public static function duplicate( string $key, string $type, string $slug, int $except = 0 ): bool {
+		return (bool) self::key_conflicts( $key, $except ) || (bool) self::slug_conflict( $type, $slug, $except );
+	}
+
+	public static function visible_conflict_post( int $id ) {
+		return $id > 0 && current_user_can( 'read_post', $id ) && current_user_can( 'edit_post', $id ) ? get_post( $id ) : null;
+	}
+
+	public static function conflicts( string $key, string $type, string $slug, int $except = 0 ): array {
+		$keys = self::key_conflicts( $key, $except );
+		$slug_id = self::slug_conflict( $type, $slug, $except );
+		return array( 'key' => $keys, 'slug' => $slug_id ? array( $slug_id ) : array() );
+	}
+
+	public static function conflict_messages( array $conflicts, string $type, string $slug ): array {
+		$messages = array();
+		if ( $conflicts['key'] ) {
+			$messages[] = self::USED_KEY;
+		}
+		if ( $conflicts['slug'] ) {
+			$message = '投稿先「' . $type . '」でスラッグ「' . $slug . '」が使用されています。';
+			if ( ! $conflicts['key'] ) { $message .= '管理ID・本文・画像・分類を維持し、承認した別のスラッグ（post_name）だけに変更してCSVを再提出してください。'; }
+			$messages[] = $message;
+		}
+		return $messages;
 	}
 
 	private static function decode( string $raw, string $name ) {
@@ -24,7 +68,7 @@ final class CsvValidator {
 	}
 
 	public static function check( array $rows, int $target = 0, array $bindings = array(), array $image_options = array() ): array {
-		$items = array(); $errors = array(); $keys = array(); $slugs = array();
+		$items = array(); $errors = array(); $keys = array(); $slugs = array(); $conflict_ids = array();
 		$before = $target ? DraftUpdate::target( $target ) : array();
 		if ( is_wp_error( $before ) || ( $target && 1 !== count( $rows ) ) ) { return array( 'items' => array(), 'errors' => array( '更新は利用可能な本人の下書き1件だけを明示的に選んでください。' ), 'fingerprint' => '' ); }
 		$site = Store::site();
@@ -45,8 +89,19 @@ final class CsvValidator {
 				if ( '' === $title || Blocks::length( $title ) > 200 || Blocks::length( $excerpt ) > 2000 ) { throw new \InvalidArgumentException( 'タイトルは1〜200文字、抜粋は2000文字以下にしてください。' ); }
 				$slug = $row['post_name'];
 				if ( strlen( $slug ) > 180 || ! preg_match( '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug ) ) { throw new \InvalidArgumentException( 'スラッグは英小文字・数字をハイフンでつなぎ、180文字以下で指定してください。' ); }
-				if ( isset( $keys[ $key ] ) || isset( $slugs[ $type . ':' . $slug ] ) || self::duplicate( $key, $type, $slug, $target ) ) { throw new \InvalidArgumentException( '管理IDまたは投稿先・スラッグが他の記事と重複しています。' ); }
-				$keys[ $key ] = true; $slugs[ $type . ':' . $slug ] = true;
+				$slug_key = $type . ':' . $slug;
+				$repeated = array();
+				if ( isset( $keys[ $key ] ) ) { $repeated[] = '管理ID（' . $keys[ $key ] . '行目）'; }
+				if ( isset( $slugs[ $slug_key ] ) ) { $repeated[] = '投稿先・スラッグ（' . $slugs[ $slug_key ] . '行目）'; }
+				$keys[ $key ] = $keys[ $key ] ?? $line;
+				$slugs[ $slug_key ] = $slugs[ $slug_key ] ?? $line;
+				if ( $repeated ) { throw new \InvalidArgumentException( 'CSV内で' . implode( 'と', $repeated ) . 'が重複しています。該当行を確認してください。' ); }
+				$conflicts = self::conflicts( $key, $type, $slug, $target );
+				$messages = self::conflict_messages( $conflicts, $type, $slug );
+				if ( $messages ) {
+					$conflict_ids[ $line ] = array_unique( array_merge( $conflicts['key'], $conflicts['slug'] ) );
+					throw new \InvalidArgumentException( implode( ' ', $messages ) );
+				}
 				$taxonomies = self::object( $row['taxonomies_json'], 'taxonomies_json' ); $terms = array(); $objects = Store::taxonomies( $type );
 				foreach ( $taxonomies as $taxonomy => $ids ) {
 					if ( ! isset( $objects[ $taxonomy ] ) || ! current_user_can( $objects[ $taxonomy ]->cap->assign_terms ) || ! is_array( $ids ) || count( $ids ) > 200 ) { throw new \InvalidArgumentException( '投稿先に対応しない分類、権限のない分類、または不正な分類形式です。' ); }
@@ -86,6 +141,6 @@ final class CsvValidator {
 			catch ( \InvalidArgumentException $error ) { $errors[] = $line . '行目：' . $error->getMessage(); }
 		}
 		$quality = array_intersect_key( $site, array_flip( array( 'min_section', 'min_article', 'forbidden_words', 'locked_rules', 'publication_checks' ) ) );
-		return array( 'items' => $items, 'errors' => $errors, 'fingerprint' => hash( 'sha256', wp_json_encode( array( $items, $quality ) ) ) );
+		return array( 'items' => $items, 'errors' => $errors, 'conflict_ids' => $conflict_ids, 'fingerprint' => hash( 'sha256', wp_json_encode( array( $items, $quality ) ) ) );
 	}
 }

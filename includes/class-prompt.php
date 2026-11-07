@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** Local, deterministic prompt assembly. No external AI calls are made here. */
 final class Prompt {
-	const VERSION = 'P1-draft.20';
+	const VERSION = 'P1-draft.21';
 
 	public static function prepare() {
 		$article = Store::article();
@@ -15,6 +15,10 @@ final class Prompt {
 		$type = isset( $article['post_type'] ) && is_string( $article['post_type'] ) ? $article['post_type'] : '';
 		if ( ! current_user_can( 'read' ) || ! Store::can_create( $type ) ) {
 			return new \WP_Error( 'permission', '利用できる投稿先を選び、記事条件を保存してください。' );
+		}
+		$key_used = (bool) CsvValidator::key_conflicts( $article['article_key'] ?? '' );
+		if ( $key_used && 'proofread' !== Consultation::mode( $article ) ) {
+			return new \WP_Error( 'article_key_used', CsvValidator::USED_KEY );
 		}
 		$profile = ProfileRuntime::profile( $article );
 		if ( ! $profile ) {
@@ -38,6 +42,7 @@ final class Prompt {
 			}
 		}
 		$context = Store::context( $article );
+		if ( $key_used ) { $context['new_import_blocked'] = true; }
 		$rules = Store::sanitize( Config::rules(), $context['effective_rules'] );
 		if ( is_wp_error( $rules ) ) {
 			return $rules;
@@ -153,7 +158,14 @@ final class Prompt {
 		$text .= wp_json_encode( $prepared['context'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG );
 		$text .= "\n</article_data>\n";
 		if ( Consultation::titles() ) { $text .= "\n今回の目的はネタ・タイトルの相談です。本文、画像、CSVの制作は開始せず、候補を提案してください。"; }
-		elseif ( 'proofread' === Consultation::mode() ) { $text .= "\n提供原稿を添削し、変更点と修正版を提示してください。構成提案やCSV生成を先に行わず、原稿にない事実を追加しません。CSVは利用者が明示的に取り込みを希望した場合だけ、次の仕様を使います。\n" . Csv::export_instructions( $prepared['context'], '', true ); }
+		elseif ( 'proofread' === Consultation::mode() ) {
+			$text .= "\n提供原稿を添削し、変更点と修正版を提示してください。構成提案やCSV生成を先に行わず、原稿にない事実を追加しません。";
+			if ( ! empty( $prepared['context']['new_import_blocked'] ) ) {
+				$text .= "\n管理IDは登録済みです。修正版を提示し、既存原稿の修正にはWordPressの編集画面を案内します。新規取り込み用のCSVは生成しません。";
+			} else {
+				$text .= "\nCSVは利用者が明示的に取り込みを希望した場合だけ、次の仕様を使います。\n" . Csv::export_instructions( $prepared['context'], '', true );
+			}
+		}
 		else {
 			$text .= 'guided' === Consultation::mode() ? "\nまず今回の進め方を短く案内し、制作モードの判断と、必要な質問または構成提案をしてください。既存記事の比較や企画の相談がある場合は、先に新規・追記・別案・保留の方針を相談してください。利用者が今することを具体的に示してください。本文は構成の承認後に作成してください。\n" : "\ninteraction-delegatedに従い、必要情報が揃ったら構成と本文をまとめて提案してください。\n";
 			$text .= "\n## 最終承認後の記事CSV仕様（いまは出力せず制作を先に進める）\n" . Csv::export_instructions( $prepared['context'], '', true );
