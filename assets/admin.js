@@ -9,7 +9,7 @@
 			const purpose = form.querySelector('[name="data[planning_mode]"]:checked')?.value || 'topic';
 			const interaction = form.querySelector('[name="data[interaction_mode]"]:checked')?.value || 'guided';
 			const titles = purpose === 'titles', proofreading = !titles && interaction === 'proofread';
-			const panels = { 'interaction': !titles, 'overview': !proofreading, 'proofread': proofreading, 'titles': titles, 'production': !titles, 'writing': !titles && !proofreading };
+			const panels = { 'interaction': !titles, 'autonomous': !titles && interaction === 'autonomous', 'overview': !proofreading, 'proofread': proofreading, 'titles': titles, 'production': !titles, 'writing': !titles && !proofreading };
 			Object.keys(panels).forEach(function (name) {
 				const panel = form.querySelector('[data-aaa-' + name + '-fields]');
 				if (!panel) return;
@@ -48,8 +48,24 @@
 			const placement = form.querySelector('[name="data[image_intro_placement]"]')?.closest('tr');
 			if (count) count.hidden = siteLayout.value !== 'intro_body';
 			if (placement) placement.hidden = !['intro','intro_body'].includes(siteLayout.value);
+			const lead = form.querySelector('[name="data[image_lead]"]');
+			for (const field of ['image_lead','image_lead_placement','image_additional_count','image_count_policy']) {
+				const row = form.querySelector('[name="data[' + field + ']"]')?.closest('tr');
+				if (row) row.hidden = siteLayout.value !== 'planned' || (field === 'image_lead_placement' && lead?.value !== 'yes');
+			}
 		};
 		siteLayout.addEventListener('change', updateImageDefaults); updateImageDefaults();
+		siteLayout.closest('form').querySelector('[name="data[image_lead]"]')?.addEventListener('change', updateImageDefaults);
+	}
+	const volumePreset = root.querySelector('[name="data[volume_preset]"]');
+	if (volumePreset) {
+		const updateVolume = function () {
+			for (const field of ['volume_target','volume_adjustment']) {
+				const row = volumePreset.closest('form').querySelector('[name="data[' + field + ']"]')?.closest('tr');
+				if (row) row.hidden = volumePreset.value !== 'target';
+			}
+		};
+		volumePreset.addEventListener('change', updateVolume); updateVolume();
 	}
 	const setupChoice = root.querySelector('.aaa-setup-choice');
 	if (setupChoice) {
@@ -67,6 +83,7 @@
 	}
 	root.querySelectorAll('[data-aaa-csv-drop]').forEach(function (zone) {
 		const csvLabel = zone.dataset.aaaCsvLabel || '記事CSV';
+		const zipLimit = Number(zone.dataset.aaaZipLimit || 0);
 		const input = zone.querySelector('input[type="file"]');
 		const pick = zone.querySelector('[data-aaa-csv-pick]');
 		const status = zone.querySelector('[data-aaa-csv-selection]');
@@ -79,6 +96,11 @@
 		});
 		const problem = function (files) {
 			if (files.length !== 1) return csvLabel + 'を1点だけ選んでください。';
+			if (zipLimit && /\.zip$/i.test(files[0].name)) {
+				if (files[0].size === 0) return '選んだZIPは空です。';
+				return files[0].size > zipLimit ? 'ZIPがアップロード上限を超えています。画面に表示された上限を確認してください。' : '';
+			}
+			if (zipLimit && !/\.csv$/i.test(files[0].name)) return '記事パッケージ（.zip）または記事CSV（.csv）を選んでください。';
 			if (!/\.csv$/i.test(files[0].name)) return csvLabel + '（.csv）を選んでください。画像やZIPはここでは読み込めません。';
 			if (files[0].size > 1048576) return 'CSVが1MBを超えています。記事を分けるか、作成担当者に確認してください。';
 			if (files[0].size === 0) return '選んだCSVは空です。ChatGPTから受け取ったファイルを確認してください。';
@@ -99,7 +121,7 @@
 			event.preventDefault(); event.stopPropagation(); depth = 0; zone.classList.remove('is-dragging');
 			const files = event.dataTransfer && event.dataTransfer.files;
 			const message = files ? problem(files) : 'ファイルを受け取れませんでした。選択ボタンを使ってください。';
-			if (message) { tell(message + (input.files.length ? ' 前に選んだCSVは維持しています。' : '')); return; }
+			if (message) { tell(message + (input.files.length ? (zipLimit ? ' 前に選んだファイルは維持しています。' : ' 前に選んだCSVは維持しています。') : '')); return; }
 			try { input.files = files; input.dispatchEvent(new Event('change', { bubbles: true })); }
 			catch (_) { tell('このブラウザーではドロップを選択欄へ反映できません。「' + csvLabel + 'を選ぶ」から選んでください。'); }
 		});

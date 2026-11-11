@@ -103,4 +103,16 @@ $release=release_fixture();$remote_version='0.1.1';$network_failure=true;check($
 check($options['business-data']===$business,'Updater does not alter existing business settings/article/media data in API double');
 $other=(object)array('response'=>array('other/other.php'=>(object)array('new_version'=>'99.0.0')));
 check($checker->injectUpdate($other)->response['other/other.php']->new_version==='99.0.0','Other plugin update data preserved');
+$release=release_fixture('0.1.4');
+$remote_version='0.1.4';
+$installed_version='0.1.3';
+$checker->getInstalledPackage()->clearCachedVersion();
+$update=$checker->requestUpdate();
+check($update && $update->download_url===Updater::REPOSITORY.'/releases/download/v0.1.4/'.Updater::ASSET,'0.1.4 uses its official ZIP asset');
+$checker->getUpdateState()->setUpdate($update);
+$list=$checker->injectUpdate($other);
+check(($list->response['ai-article-assistant/ai-article-assistant.php']->new_version??'')==='0.1.4','Installed 0.1.3 receives 0.1.4 for the existing plugin path');
+$installed_version='0.1.4';
+$checker->getInstalledPackage()->clearCachedVersion();
+check($checker->getUpdate()===null && $options['business-data']===$business,'Installed 0.1.4 receives no duplicate update and business data stays intact');
 echo "PASS: $checks updater checks (actual PUC 5.7, HTTP/WP doubles; real update/install/rollback unverified)\n";

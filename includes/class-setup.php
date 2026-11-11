@@ -78,7 +78,7 @@ final class Setup {
 		if ( false === $flow || '' === trim( $flow ) ) { return ''; }
 		$schema = array();
 		$fields_by_scope = 'details' === $mode
-			? array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields(), Config::image_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) )
+			? array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields(), Config::image_fields(), Config::volume_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) )
 			: array( 'site' => Config::site_fields(), 'profile' => Config::profile_fields(), 'term' => Config::term_fields() );
 		if ( 'basic' === $mode ) { $fields_by_scope['term_create'] = TermCreation::fields(); }
 		foreach ( $fields_by_scope as $scope => $fields ) {
@@ -88,6 +88,7 @@ final class Setup {
 		self::remember( $snapshot );
 		$context = array( 'context_revision' => self::hash( $snapshot ), 'site' => array_merge( Store::defaults( Config::site_fields() ), is_array( $snapshot['site'] ) ? array_intersect_key( $snapshot['site'], Config::site_fields() ) : array() ), 'profiles' => $snapshot['profiles'], 'terms' => $snapshot['terms'], 'post_types' => $snapshot['post_types'], 'fields' => $schema );
 		$context['consultation_mode'] = $mode;
+		$context['site']['autonomous_start'] = Store::site()['autonomous_start'];
 		$context['article_kinds'] = array();
 		foreach ( $snapshot['profiles'] ?? array() as $id => $profile ) {
 			$resolved = Store::sanitize( Config::profile_fields(), $profile );
@@ -105,7 +106,7 @@ final class Setup {
 			: '今回は基本初期設定です。サイト・事業の事実、読者、ブログの役割、カテゴリー、投稿目的と必要な記事の種類を中心に相談してください。文章品質は有効な共通推奨を使い、文章量・見出し数・画像枚数等を全問ヒアリングしません。既知情報は聞き直しません。詳細を調整したい場合だけ任意の詳細設定相談を案内してください。';
 		return '# WordPressの初期設定を相談する' . "\nプロンプト版：" . self::VERSION . "\n"
 			. $mode_instruction . "\n品質の推奨チェックはyes/noで指定し、空文字を使いません。noはその推奨の追加停止であり、既存の独自指示や安全上の禁止事項の解除ではありません。自由入力との関係はeffective_qualityのprecedenceに従い、矛盾する明示条件は確認してください。\n"
-			. "CSV生成前に、すべての選択式項目のvalueがsetup_context.fieldsのchoicesのキーと完全一致するか自己点検してください。表示名や別項目の値を転記しません。workflow_mode（固定する制作モード）はsimple（簡易作成）・interview（ヒアリング重視）・research（リサーチ重視）だけです。guided・delegated・proofreadは記事ごとのinteraction_mode（記事の進め方）の値であり、初期設定CSVのworkflow_modeに使用できません。『相談しながら』をinterviewへ自動変換しません。workflow_policy=recommendでは必要のない固定モードの変更行を省略して既存値を維持し、『管理者が固定』へ新しく変更する場合は承認されたworkflow_policy=fixedと有効なworkflow_modeを指定します。設定不要な項目を空文字で埋めません。\n"
+			. "CSV生成前に、すべての選択式項目のvalueがsetup_context.fieldsのchoicesのキーと完全一致するか自己点検してください。表示名や別項目の値を転記しません。workflow_mode（固定する制作モード）はsimple（簡易作成）・interview（ヒアリング重視）・research（リサーチ重視）だけです。guided・delegated・autonomous・proofreadは記事ごとのinteraction_mode（記事の進め方）の値であり、初期設定CSVのworkflow_modeに使用できません。『相談しながら』をinterviewへ自動変換しません。workflow_policy=recommendでは必要のない固定モードの変更行を省略して既存値を維持し、『管理者が固定』へ新しく変更する場合は承認されたworkflow_policy=fixedと有効なworkflow_modeを指定します。設定不要な項目を空文字で埋めません。\n"
 			. "基本と詳細のCSVは別々の変更です。アップロードと比較だけでは保存されず、次のCSVを使う前に各CSVを比較・承認して適用します。設定が変わってもcontext_revisionを手書きで差し替えません。プラグインが相談時の控えと現在値を照合し、競合があれば比較して管理者が承認します。控えがない・期限切れ・投稿先変更の場合は最新プロンプトで再生成します。\n"
 			. "あなたはサイト制作者の相談相手です。最初に使い方を短く案内し、いきなり設定やCSVを出さないでください。既存設定を読み、上記の相談モードに必要な不足だけ1回最大3問で聞きます。サイトのサービス・読者・目的は基本相談で未確定の場合だけ確認します。答えやすい選択肢や短い回答例を示し、確定済み情報を繰り返し質問しません。基本相談では必要な記事の種類、独自の強み、投稿先カテゴリーの方針を確認します。文章の詳細は希望がある場合だけ相談します。短い告知へSEO長文を強制しません。料金・実績・資格・連絡先を創作せず、不明な事実は未設定にします。根拠のないSEO効果を保証しません。専門性が必要な記事は調査と本人へのヒアリングを設計します。\n"
 			. "クライアントは『書きたいことが決まっている』『何を書くかから相談したい』『ネタ・タイトルだけ相談』を選べます。相談しながらは段階的な構成・本文確認、お任せは必要な情報確認後に構成と本文をまとめて提案し、添削は提供原稿の趣旨を保ちます。ネタ相談では本文やCSVを強制しません。お任せでも最終承認、必要な事実確認と画像1枚ずつの承認を維持します。簡易・ヒアリング・リサーチのモードは目的に合わせて推奨し、不要な質問は増やしません。\n"
@@ -130,7 +131,7 @@ final class Setup {
 		$choices = array();
 		foreach ( $definition[4] as $key => $label ) { $choices[] = $key . '（' . $label . '）'; }
 		$message = 'CSVの' . (int) $row['_line'] . '行目：' . $target . '／' . $definition[0] . '（' . $row['field'] . '）の値「' . $value . '」は使用できません。使用できる値：' . implode( '、', $choices ) . '。';
-		if ( 'workflow_mode' === $row['field'] && in_array( $row['value'], array( 'guided', 'delegated', 'proofread' ), true ) ) { $message .= ' guided・delegated・proofreadは記事ごとの進め方（interaction_mode）の値で、制作モードとは別項目です。自動変換はしません。'; }
+		if ( 'workflow_mode' === $row['field'] && in_array( $row['value'], array( 'guided', 'delegated', 'autonomous', 'proofread' ), true ) ) { $message .= ' guided・delegated・autonomous・proofreadは記事ごとの進め方（interaction_mode）の値で、制作モードとは別項目です。自動変換はしません。'; }
 		$message .= ' AIにこのエラーを伝えてCSVを修正してください。変更不要なら該当行を除くと既存値を維持します。context_revisionは書き換えないでください。このCSVは適用していません。保存済み設定と未適用の比較は保持しています。';
 		return new \WP_Error( 'choice', $message );
 	}
@@ -194,6 +195,7 @@ final class Setup {
 					$base_raw = 'site' === $scope ? ( $baseline['site'] ?? array() ) : ( 'profile' === $scope ? ( $baseline['profiles'][ $target ] ?? array() ) : ( $baseline['terms'][ $parts[0] ][ $term_id ]['context'] ?? array() ) );
 					$base_raw = is_array( $base_raw ) ? $base_raw : array();
 					$base_value = $base_raw[ $field ] ?? $fields[ $field ][2];
+					if ( 'site' === $scope && 'autonomous_start' === $field && null === ( $baseline['site'] ?? null ) ) { $base_value = 'choose'; }
 					$prior_effective = $old[ $field ] ?? $fields[ $field ][2];
 					$conflict = $rebased && (string) $prior_effective !== (string) $base_value && (string) $prior_effective !== (string) $value[ $field ];
 					$changes[] = array( 'scope' => $scope, 'target' => $target, 'target_label' => $target_label, 'operation' => $operation, 'field_key' => $field, 'field' => $fields[ $field ][0], 'baseline' => $base_value, 'before' => $prior, 'after' => $value[ $field ], 'conflict' => $conflict );
@@ -214,7 +216,7 @@ final class Setup {
 				$changes[] = array( 'scope' => 'term_create', 'target' => $alias, 'target_label' => $plan['name'] . ( $existing ? ' / ID:' . $plan['existing_id'] : '' ), 'operation' => $existing ? '変更なし' : '新規作成', 'field_key' => $field, 'field' => TermCreation::fields()[ $field ][0], 'baseline' => $existing ? $value : '', 'before' => $existing ? $value : '', 'after' => $value, 'conflict' => false );
 			}
 		}
-		$detail_fields = array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields(), Config::image_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) );
+		$detail_fields = array( 'site' => array_merge( Config::quality_fields(), Config::quality_legacy_fields(), Config::image_fields(), Config::volume_fields() ), 'profile' => array_merge( Config::rules(), array_diff_key( Config::workflow_fields(), array( 'purpose_type' => true ) ) ) );
 		$mode = 'details';
 		foreach ( $rows as $row ) { if ( ! isset( $detail_fields[ $row['scope'] ][ $row['field'] ] ) || str_starts_with( $row['target'], 'new:' ) ) { $mode = 'basic'; break; } }
 		return array( 'before' => $before, 'after' => $after, 'changes' => $changes, 'new_ids' => $new_ids, 'term_creations' => $creations, 'reused_terms' => $reused, 'csv_mode' => $mode, 'rebased' => $rebased, 'conflicts' => count( array_filter( $changes, static function ( $change ) { return $change['conflict']; } ) ) );

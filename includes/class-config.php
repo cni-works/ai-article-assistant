@@ -49,7 +49,8 @@ final class Config {
 			'publication_checks' => array( '公開前チェック（管理者専用）', 'textarea', '事実・権利・個人情報・リンクを確認する。', '記事個別設定では上書きできません。' ),
 			'min_section' => array( '短すぎるセクションの目安（文字）', 'number', 80, 'Phase 3以降の品質警告で利用する目安です。0で無効。上限100000。' ),
 			'min_article' => array( '記事本文の文字数の下限目安', 'number', 0, '取り込み前に警告する目安です。0で無効。短い告知に長文を強制する設定ではありません。' ),
-		), self::quality_fields(), self::image_fields(), array( 'default_interaction' => array( '新しい記事の標準の進め方', 'select', 'guided', '記事ごとに変更できます。保存済みの作業には影響しません。', array( 'guided' => '相談しながら作りたい', 'delegated' => 'なるべくAIにお任せ' ) ) ) );
+			'autonomous_start' => self::autonomous_start_field( '完全お任せで新しい記事を始めるときの初期値です。新規利用では3案から選ぶ方法を推奨します。' ),
+		), self::quality_fields(), self::image_fields(), self::volume_fields(), array( 'default_interaction' => array( '新しい記事の標準の進め方', 'select', 'guided', '記事ごとに変更できます。保存済みの作業には影響しません。', array( 'guided' => '相談しながら作りたい', 'delegated' => 'なるべくAIにお任せ', 'autonomous' => '完全お任せモード' ) ) ) );
 	}
 
 	/** New controls remain in the existing site option/CSV scope; legacy text is never rewritten. */
@@ -74,22 +75,43 @@ final class Config {
 
 	/** Site defaults supplement, rather than erase, existing free-text image policies. */
 	public static function image_fields(): array {
+		$counts = array();
+		for ( $count = 0; $count <= 10; ++$count ) { $counts[ $count ] = $count . '枚'; }
 		return array(
 			'image_style' => array( '画像の標準スタイル', 'select', 'auto', '', array( 'auto' => '記事に合わせる', 'illustration' => 'イラスト中心', 'photo' => '写真中心' ) ),
 			'image_style_notes' => array( '画像の雰囲気・補足指示', 'textarea', '', '色合い・タッチ・避けたい表現など。実際の活動写真をAI生成画像で代用しません。' ),
-			'image_layout' => array( '画像の標準構成・枚数', 'select', 'legacy', '従来の方針を使う場合は既存の記事の種類・自由入力を維持します。', array( 'legacy' => '従来の画像方針を使う', 'none' => '画像なし', 'intro' => '冒頭に1枚', 'intro_body' => '冒頭1枚＋本文画像', 'consult' => 'AIと相談して決める' ) ),
+			'image_layout' => array( '画像の標準構成・枚数', 'select', 'legacy', '新しい枚数・配置を使うには「枚数と配置を指定」を選びます。', array( 'legacy' => '従来の画像方針を使う', 'none' => '画像なし', 'intro' => '冒頭に1枚', 'intro_body' => '冒頭1枚＋本文画像', 'consult' => 'AIと相談して決める', 'planned' => '枚数と配置を指定' ) ),
 			'image_body_count' => array( '本文画像の標準枚数', 'select', '2', '「冒頭1枚＋本文画像」の場合だけ使用します。冒頭画像は別の1枚です。', array( '1' => '1枚', '2' => '2枚', '3' => '3枚', '4' => '4枚', '5' => '5枚' ) ),
 			'image_intro_placement' => array( '冒頭画像の表示方法', 'select', 'theme', 'テーマのアイキャッチ表示位置は管理者が確認してください。プラグインがテーマの表示を自動判定・変更することはありません。', array( 'theme' => 'テーマのアイキャッチ表示に任せる', 'body' => '本文先頭に配置する' ) ),
+			'image_lead' => array( '先頭用画像', 'select', 'yes', 'アイキャッチや本文冒頭に使う画像です。追加の本文画像とは別に数えます。', array( 'yes' => '1枚用意する', 'no' => '用意しない' ) ),
+			'image_lead_placement' => array( '先頭用画像の配置', 'select', 'featured', 'テーマがアイキャッチを表示する場合、「両方」では同じ画像が続けて見えることがあります。', array( 'featured' => 'アイキャッチのみ', 'body' => '本文冒頭のみ', 'both' => 'アイキャッチと本文冒頭の両方' ) ),
+			'image_additional_count' => array( '追加の本文画像', 'select', '3', '先頭用画像を除いた枚数です。', $counts ),
+			'image_count_policy' => array( '追加の本文画像の枚数方針', 'select', 'fixed', '', array( 'fixed' => '指定枚数を優先', 'flexible' => '記事内容に応じて増減可（0〜10枚）' ) ),
 		);
 	}
 
-	public static function site_info_fields(): array { return array_slice( self::site_fields(), 0, 11, true ) + array_intersect_key( self::site_fields(), array_flip( array( 'default_interaction' ) ) ) + self::image_fields(); }
+	public static function site_info_fields(): array { return array_slice( self::site_fields(), 0, 11, true ) + array_intersect_key( self::site_fields(), array_flip( array( 'default_interaction', 'autonomous_start' ) ) ) + self::image_fields() + self::volume_fields(); }
+
+	private static function autonomous_start_field( string $description ): array {
+		return array( '完全お任せモードの執筆開始方法', 'select', 'auto', $description, array(
+			'auto' => '確認せず自動制作',
+			'choose' => '3案から選んで自動制作',
+		) );
+	}
 	public static function quality_legacy_fields(): array { return array_slice( self::site_fields(), 11, 9, true ); }
 	public static function safety_fields(): array { return array_intersect_key( self::site_fields(), array_flip( array( 'forbidden_words', 'locked_rules', 'publication_checks', 'min_section', 'min_article' ) ) ); }
 
+	public static function volume_fields(): array {
+		return array(
+			'volume_preset' => array( '記事のボリューム方針', 'select', 'clarity', '記事の種類で「サイト標準を継承」を選んだ場合に適用します。', array( 'clarity' => '伝わりやすさ優先（文字数指定なし）', 'concise' => '簡潔（1,000〜2,000文字）', 'standard' => '標準（2,000〜3,000文字）', 'rich' => '充実（3,000〜5,000文字）', 'target' => '文字数を指定' ) ),
+			'volume_target' => array( 'サイト標準の目標文字数', 'number', 2000, '「文字数を指定」の場合に使用します。' ),
+			'volume_adjustment' => array( '目標文字数の扱い', 'select', 'flexible', '「文字数を指定」の場合に使用します。', array( 'flexible' => '内容に合わせて調整する', 'strict' => '目標文字数を優先する' ) ),
+		);
+	}
+
 	public static function rules(): array {
 		return array(
-			'length_mode' => array( '文章量の決め方', 'select', 'auto', '文字数を満たすための水増しはしません。', array( 'auto' => 'AIにおまかせ', 'range' => '範囲指定', 'target' => '目標文字数' ) ),
+			'length_mode' => array( '文章量の決め方', 'select', 'auto', '文字数を満たすための水増しはしません。', array( 'auto' => 'AIにおまかせ', 'inherit' => 'サイト標準を継承', 'range' => '範囲指定', 'target' => '目標文字数' ) ),
 			'length_min' => array( '文字数の下限', 'number', 0, '範囲指定時に使用。0は指定なし。' ),
 			'length_max' => array( '文字数の上限', 'number', 0, '範囲指定時に使用。0は指定なし。' ),
 			'length_target' => array( '目標文字数', 'number', 0, '目標文字数モードで使用。' ),
@@ -121,6 +143,7 @@ final class Config {
 			'default_terms' => array( '標準カテゴリー・分類', 'textarea', '', '1行にtaxonomy:ID。指定した標準投稿タイプに所属する既存の分類のみ。' ),
 			'questions_json' => array( '追加の質問項目', 'questions', '[]', 'JSON配列。key、label、type（text/textarea/select）、help、options（select時の選択肢配列）、required（執筆前にAIが確認する項目）。最大10件。入力を省略した必須事項はAIのヒアリングで確認します。' ),
 			'purpose' => array( '記事の目的', 'textarea', '', '' ),
+			'image_default' => array( 'この種類の画像設定', 'select', 'inherit', 'サイトで「枚数と配置を指定」を使う場合に適用します。「この種類の画像方針を優先」を選ぶと、下の画像の使用方針を使います。', array( 'inherit' => 'サイト標準の枚数・配置を継承', 'profile' => 'この種類の画像方針を優先' ) ),
 		), self::workflow_fields(), self::rules() );
 	}
 
@@ -136,7 +159,8 @@ final class Config {
 	public static function article_fields(): array {
 		return array(
 			'planning_mode' => array( '相談の始め方', 'select', 'topic', '', array( 'topic' => '書きたいことが決まっている', 'ideas' => '何を書くかから相談したい', 'titles' => '記事のネタ・タイトルだけ相談したい' ) ),
-			'interaction_mode' => array( '記事の進め方', 'select', 'guided', '', array( 'guided' => '相談しながら作りたい', 'delegated' => 'なるべくAIにお任せ', 'proofread' => '添削だけしてほしい' ) ),
+			'interaction_mode' => array( '記事の進め方', 'select', 'guided', '', array( 'guided' => '相談しながら作りたい', 'delegated' => 'なるべくAIにお任せ', 'autonomous' => '完全お任せモード', 'proofread' => '添削だけしてほしい' ) ),
+			'autonomous_start' => self::autonomous_start_field( 'この設定は今回の記事に適用します。3案選択後は同じチャットで完成まで進みます。' ),
 			'image_choice' => array( '今回の画像', 'select', 'site', '', array( 'site' => '初期設定を使う', 'consult' => 'AIと相談して決める', 'custom' => '自由入力で指定する' ) ),
 			'image_request' => array( '今回の画像の希望', 'textarea', '', '例：冒頭1枚と説明用イラスト2枚。画像不要、手持ち写真を使う、なども指定できます。' ),
 			'source_draft' => array( '添削したい原稿', 'textarea', '', '平文で3万バイト以内。書式ではなく文章を添削します。' ),

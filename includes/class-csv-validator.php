@@ -67,7 +67,7 @@ final class CsvValidator {
 		return $value;
 	}
 
-	public static function check( array $rows, int $target = 0, array $bindings = array(), array $image_options = array() ): array {
+	public static function check( array $rows, int $target = 0, array $bindings = array(), array $image_options = array(), bool $zip_preflight = false ): array {
 		$items = array(); $errors = array(); $keys = array(); $slugs = array(); $conflict_ids = array();
 		$before = $target ? DraftUpdate::target( $target ) : array();
 		if ( is_wp_error( $before ) || ( $target && 1 !== count( $rows ) ) ) { return array( 'items' => array(), 'errors' => array( '更新は利用可能な本人の下書き1件だけを明示的に選んでください。' ), 'fingerprint' => '' ); }
@@ -117,7 +117,7 @@ final class CsvValidator {
 					$media_input = self::object( $row['media_json'], 'media_json' );
 					if ( '1' === $row['schema_version'] && property_exists( $media_input, 'files' ) ) { throw new \InvalidArgumentException( '資料計画filesを含む記事CSVはschema_version=2にしてください。' ); }
 					$media = Media::resolve( $media_input, $key, $type, $bindings[ $key ] ?? array(), $image_options[ $key ] ?? array() );
-					$acf = Acf::validate( self::object( $row['acf_json'], 'acf_json' ), $type, $media['selected'] );
+					$acf = Acf::validate( self::object( $row['acf_json'], 'acf_json' ), $type, $media['selected'], $zip_preflight );
 				}
 				$seo = (array) self::object( $row['seo_json'], 'seo_json' );
 				if ( array_diff( array_keys( $seo ), array( 'title', 'description' ) ) ) { throw new \InvalidArgumentException( 'SEOのキーはtitleとdescriptionだけです。' ); }

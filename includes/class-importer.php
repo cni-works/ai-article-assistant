@@ -9,22 +9,63 @@ final class Importer {
 	public static function session(): array { $value = get_transient( self::storage_key() ); return is_array( $value ) ? $value : array(); }
 	public static function allowed(): bool { return current_user_can( 'read' ) && (bool) Store::writable_types(); }
 
-	public static function preview( string $source ) {
+	public static function preview( string $source, array $package = array() ) {
 		if ( ! self::allowed() ) { return new \WP_Error( 'permission', 'CSV取り込みに利用できる投稿先・権限がありません。' ); }
+		if ( $package && ! current_user_can( 'upload_files' ) ) { return new \WP_Error( 'permission', 'ZIPを取り込むにはファイルアップロード権限が必要です。' ); }
 		$lock = OperationLock::acquire( self::LOCK, 'article-preview' ); if ( is_wp_error( $lock ) ) { return $lock; }
 		try {
 		$rows = Csv::parse( $source ); if ( is_wp_error( $rows ) ) { return $rows; }
 		$bindings = array_intersect_key( self::session()['bindings'] ?? array(), array_fill_keys( array_map( 'strtolower', array_column( $rows, 'article_key' ) ), true ) );
 		$image_options = array_intersect_key( self::session()['image_options'] ?? array(), array_fill_keys( array_map( 'strtolower', array_column( $rows, 'article_key' ) ), true ) );
+		$zip = array();
+		if ( $package ) {
+			if ( 1 !== count( $rows ) || '2' !== $rows[0]['schema_version'] ) {
+				return new \WP_Error( 'zip_csv', 'ZIPには1記事分の記事CSV v2を入れてください。' );
+			}
+			$preflight = CsvValidator::check( $rows, 0, array(), array(), true );
+			if ( $preflight['errors'] ) { return new \WP_Error( 'zip_csv', implode( ' ', $preflight['errors'] ) ); }
+			$previous = self::session();
+			$same = ( $previous['zip']['hash'] ?? '' ) === $package['hash'];
+			$bindings = $same ? $bindings : array();
+			$image_options = $same ? $image_options : array();
+			$zip = self::package_bindings( $rows[0], $package, $bindings );
+			if ( is_wp_error( $zip ) ) { return $zip; }
+		}
 		$check = CsvValidator::check( $rows, 0, $bindings, $image_options );
 		$stage = array( 'token' => wp_generate_uuid4(), 'state' => 'preview', 'source' => $source, 'check' => $check, 'bindings' => $bindings, 'image_options' => $image_options, 'created_at' => current_time( 'mysql' ) );
+		if ( $zip ) { $stage['zip'] = $zip; }
 		set_transient( self::storage_key(), $stage, 1800 );
 		if ( self::session() !== $stage ) { return new \WP_Error( 'save', 'プレビューを一時保存できませんでした。' ); }
 		return $stage;
 		} finally { OperationLock::release( $lock ); }
 	}
 
-	/** Explicit bindings only. Upload transport stays entirely in WordPress's standard media modal. */
+	private static function package_bindings( array $row, array $package, array &$bindings ) {
+		$key = strtolower( $row['article_key'] );
+		$data = json_decode( $row['media_json'] );
+		$plans = isset( $data->files ) ? Media::plans( $data->files ) : array();
+		$names = array_count_values( array_column( $plans, 'suggested_filename' ) );
+		$unused = $package['entries'];
+		$matches = array();
+		foreach ( $plans as $ref => $plan ) {
+			$name = $plan['suggested_filename'];
+			$index = strtolower( $name );
+			$entry = $unused[ $index ] ?? null;
+			if ( ! $entry || $entry['name'] !== $name || 1 !== $names[ $name ] ) { continue; }
+			$kind = 'application/pdf' === $entry['mime'] ? 'pdf' : 'image';
+			if ( $plan['kind'] !== $kind ) { continue; }
+			$id = ZipImport::register( $key, $ref, $kind, $entry );
+			if ( is_wp_error( $id ) ) {
+				return new \WP_Error( $id->get_error_code(), $id->get_error_message() . ' 登録済みの資料はメディアに残り、同じZIPを読み直すと利用可能な資料を再利用します。' );
+			}
+			$bindings[ $key ][ $ref ] = $id;
+			$matches[ $ref ] = $name;
+			unset( $unused[ $index ] );
+		}
+		return array( 'hash' => $package['hash'], 'matches' => $matches, 'unused' => array_values( array_column( $unused, 'name' ) ) );
+	}
+
+	/** Returns the staged file requirements for the article confirmation screen. */
 	public static function requirements( array $stage ): array {
 		$rows = Csv::parse( $stage['source'] ?? '' ); if ( is_wp_error( $rows ) ) { return array(); }
 		$result = array(); $seen = array();
@@ -77,6 +118,11 @@ final class Importer {
 	public static function missing( array $check ): bool {
 		foreach ( $check['items'] ?? array() as $item ) { foreach ( $item['media'] ?? array() as $media ) { if ( 'missing' === $media['status'] ) { return true; } } }
 		return false;
+	}
+	public static function zip_manual_rows( array $stage ): array {
+		return array_filter( self::requirements( $stage ), static function ( $row ) use ( $stage ) {
+			return ! isset( $stage['zip']['matches'][ $row['ref'] ] ) || 'available' !== $row['media']['status'] || ! empty( $row['media']['is_placeholder'] );
+		} );
 	}
 	public static function dummy( array $check ): bool {
 		foreach ( $check['items'] ?? array() as $item ) { foreach ( $item['media'] ?? array() as $media ) { if ( ! empty( $media['is_placeholder'] ) ) { return true; } } } return false;

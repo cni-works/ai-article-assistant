@@ -3,6 +3,9 @@
 .aaa-admin .aaa-choice-group { border: 0; padding: 0; margin: 24px 0; min-width: 0; }
 .aaa-admin .aaa-choice-group legend { font-size: 19px; font-weight: 600; margin-bottom: 12px; }
 .aaa-admin .aaa-choice-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+@media (min-width: 783px) {
+	.aaa-admin [data-aaa-choice="interaction_mode"] .aaa-choice-cards { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
 .aaa-admin .aaa-choice-card { position: relative; cursor: pointer; min-width: 0; }
 .aaa-admin .aaa-choice-card input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .aaa-admin .aaa-choice-content { display: flex; align-items: center; gap: 12px; padding: 22px 16px; min-height: 104px; height: 100%; box-sizing: border-box; border: 2px solid #dce4ec; border-radius: 12px; font-weight: 600; overflow-wrap: anywhere; transition: background .15s, border-color .15s, box-shadow .15s; }

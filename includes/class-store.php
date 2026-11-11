@@ -63,6 +63,9 @@ final class Store {
 		if ( $max && $min > $max ) {
 			return new \WP_Error( 'range', '文字数の下限は上限以下にしてください。' );
 		}
+		if ( 'target' === ( $result['volume_preset'] ?? '' ) && isset( $result['volume_target'] ) && 0 === $result['volume_target'] ) {
+			return new \WP_Error( 'number', 'サイト標準の目標文字数は1以上で指定してください。' );
+		}
 		if ( isset( $fields['default_post_type'], $fields['default_terms'] ) && ! $partial ) {
 			$binding = ProfileRuntime::binding( $result );
 			if ( is_wp_error( $binding ) ) { return $binding; }
@@ -71,7 +74,8 @@ final class Store {
 	}
 
 	public static function site(): array {
-		$saved = get_option( Config::SITE, array() );
+		$saved = get_option( Config::SITE, null );
+		if ( null === $saved ) { $saved = array( 'autonomous_start' => 'choose' ); }
 		return array_merge( self::defaults( Config::site_fields() ), is_array( $saved ) ? $saved : array() );
 	}
 
@@ -222,7 +226,8 @@ final class Store {
 		if ( '' !== $binding['post_type'] && $type !== $binding['post_type'] ) { return new \WP_Error( 'binding', '選んだ記事の種類に設定された投稿先を選択してください。' ); }
 		$answers = ProfileRuntime::answers( $profile_data, $raw['answers'] ?? ( $reuse ? ( $previous['answers'] ?? array() ) : array() ) );
 		if ( is_wp_error( $answers ) ) { return $answers; }
-		$article = self::sanitize( Config::article_fields(), array_replace( array_intersect_key( $previous, array_flip( array( 'source_draft', 'interaction_mode', 'reference_summary', 'image_choice', 'image_request' ) ) ), $raw ) );
+		$retained = array_intersect_key( $previous, array_flip( array( 'source_draft', 'interaction_mode', 'reference_summary', 'image_choice', 'image_request' ) ) );
+		$article = self::sanitize( Config::article_fields(), array_replace( array( 'autonomous_start' => self::autonomous_start( $previous ) ), $retained, $raw ) );
 		if ( is_wp_error( $article ) ) {
 			return $article;
 		}
@@ -247,7 +252,7 @@ final class Store {
 		if ( is_wp_error( $overrides ) ) {
 			return $overrides;
 		}
-		$effective = array_merge( $profile_data, $overrides );
+		$effective = self::effective_rules( $reuse ? $snapshot['site'] : self::site(), $profile_data, $overrides );
 		if ( ! empty( $effective['length_max'] ) && ( $effective['length_min'] ?? 0 ) > $effective['length_max'] ) {
 			return new \WP_Error( 'range', '記事の種類と個別設定を合わせると、文字数の下限が上限を超えます。' );
 		}
@@ -292,13 +297,38 @@ final class Store {
 		return $article;
 	}
 
-	/** Shared by admin previews and article prompts. Text settings remain independent, not overwritten by presets. */
+	/** New articles start with the site choice. Previously saved articles keep their own choice or the legacy flow. */
+	public static function autonomous_start( array $article ): string {
+		$choice = $article ? ( $article['autonomous_start'] ?? 'auto' ) : self::site()['autonomous_start'];
+		return 'choose' === $choice ? 'choose' : 'auto';
+	}
+
+	/** Resolve the article's choice before applying per-article numeric overrides. */
+	public static function effective_rules( array $site, array $profile, array $overrides ): array {
+		$fields = Config::rules();
+		$rules = array_merge( array_intersect_key( $site, $fields ), array_intersect_key( $profile, $fields ), $overrides );
+		if ( 'inherit' !== ( $rules['length_mode'] ?? '' ) ) { return $rules; }
+		$range = array( 'concise' => array( 1000, 2000 ), 'standard' => array( 2000, 3000 ), 'rich' => array( 3000, 5000 ) );
+		$preset = $site['volume_preset'] ?? 'clarity';
+		$length = array( 'length_mode' => 'auto', 'length_min' => 0, 'length_max' => 0, 'length_target' => 0 );
+		if ( isset( $range[ $preset ] ) ) {
+			$length['length_mode'] = 'range';
+			list( $length['length_min'], $length['length_max'] ) = $range[ $preset ];
+		} elseif ( 'target' === $preset ) {
+			$length['length_mode'] = 'target';
+			$length['length_target'] = (int) ( $site['volume_target'] ?? 2000 );
+		}
+		$numbers = array_intersect_key( $overrides, array_flip( array( 'length_min', 'length_max', 'length_target' ) ) );
+		return array_replace( $rules, $length, $numbers );
+	}
+
+	/** Shared by admin previews and article prompts. */
 	public static function writing_context( array $site, array $profile = array(), array $overrides = array() ): array {
 		$recommendations = array();
 		foreach ( Config::quality_recommendations() as $key => $rule ) {
 			if ( 'yes' === ( $site[ $key ] ?? 'yes' ) ) { $recommendations[ $key ] = array( 'label' => $rule[0], 'instruction' => $rule[1] ); }
 		}
-		$rules = self::sanitize( Config::rules(), array_merge( array_intersect_key( $profile, Config::rules() ), $overrides ) );
+		$rules = self::sanitize( Config::rules(), self::effective_rules( $site, $profile, $overrides ) );
 		if ( is_wp_error( $rules ) ) { $rules = array(); }
 		$active = $rules;
 		if ( 'range' !== ( $rules['length_mode'] ?? '' ) ) { unset( $active['length_min'], $active['length_max'] ); }
@@ -306,7 +336,7 @@ final class Store {
 		$active = array_filter( $active, static function ( $value ) { return '' !== $value; } );
 		return array(
 			'version' => 'quality-rules.1',
-			'precedence' => '安全・事実確認・利用許可は常に優先。文章条件は記事個別指定＞記事の種類指定。サイトの独自指示は共通条件として併用し、推奨ルールより優先する。明示指示同士の矛盾は勝手に解消せず利用者へ確認する。推奨を追加しない設定でも、既存の自由入力や目的別条件は取り消さない。',
+			'precedence' => '安全・事実確認・利用許可は常に優先。文章量は記事個別指定＞記事の種類指定＞継承時のサイト標準。サイトの独自指示は共通条件として併用し、推奨ルールより優先する。明示指示同士の矛盾は勝手に解消せず利用者へ確認する。推奨を追加しない設定でも、既存の自由入力や目的別条件は取り消さない。',
 			'mandatory' => array( '日時・料金・実績・資格・経験・意見・URL・出典を創作しない。', '未読の資料や未実施の調査を確認済みと報告しない。', '管理者の禁止事項・公開前チェック・本人情報の利用許可を守り、選択された進め方に従い、原稿の承認を受ける。' ),
 			'administrator_rules' => array_filter( array_intersect_key( $site, array_flip( array( 'forbidden_words', 'locked_rules', 'publication_checks' ) ) ), static function ( $value ) { return '' !== $value; } ),
 			'recommendations' => $recommendations,
@@ -318,12 +348,23 @@ final class Store {
 
 
 	/** Resolve from the captured site defaults; dormant free text is never an active instruction. */
-	public static function image_context( array $site, array $article ): array {
+	public static function image_context( array $site, array $article, array $profile = array() ): array {
 		$site = self::sanitize( Config::image_fields(), array_intersect_key( $site, Config::image_fields() ) );
 		if ( is_wp_error( $site ) ) { $site = self::defaults( Config::image_fields() ); }
 		$choice = $article['image_choice'] ?? 'site';
 		$layout = 'site' === $choice ? $site['image_layout'] : ( 'custom' === $choice ? 'custom' : 'consult' );
 		$result = array( 'source' => $choice, 'layout' => $layout );
+		if ( 'planned' === $layout ) {
+			$override = trim( $article['overrides']['images'] ?? '' );
+			$profile_request = 'profile' === ( $profile['image_default'] ?? '' ) ? trim( $profile['images'] ?? '' ) : '';
+			if ( '' !== $override || '' !== $profile_request ) {
+				$result = array( 'source' => '' !== $override ? 'article' : 'profile', 'layout' => 'custom', 'request' => '' !== $override ? $override : $profile_request );
+			} else {
+				$result['lead_placement'] = 'yes' === $site['image_lead'] ? $site['image_lead_placement'] : 'none';
+				$result['body_count'] = (int) $site['image_additional_count'];
+				$result['count_policy'] = $site['image_count_policy'];
+			}
+		}
 		if ( 'none' === $layout ) { return $result; }
 		$result['style'] = $site['image_style'];
 		$result['style_notes'] = $site['image_style_notes'];
@@ -358,6 +399,6 @@ final class Store {
 			$contexts[] = $item;
 		}
 		$profile = ProfileRuntime::profile( $article );
-		return array( 'site' => $site, 'categories' => $contexts, 'profile' => $profile, 'author' => self::author_context(), 'article' => $article, 'effective_rules' => array_merge( array_intersect_key( $site, Config::rules() ), array_intersect_key( $profile, Config::rules() ), $article['overrides'] ?? array() ), 'quality' => self::writing_context( array_merge( $site, $locked ), $profile, $article['overrides'] ?? array() ), 'locked' => $locked );
+		return array( 'site' => $site, 'categories' => $contexts, 'profile' => $profile, 'author' => self::author_context(), 'article' => $article, 'effective_rules' => self::effective_rules( $site, $profile, $article['overrides'] ?? array() ), 'quality' => self::writing_context( array_merge( $site, $locked ), $profile, $article['overrides'] ?? array() ), 'locked' => $locked );
 	}
 }

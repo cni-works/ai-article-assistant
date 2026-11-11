@@ -104,11 +104,11 @@ final class Acf {
 		return '-0' === $value ? '0' : $value;
 	}
 
-	private static function value( array $field, $value, array $media, array &$warnings, string &$plain, array &$used ) {
+	private static function value( array $field, $value, array $media, array &$warnings, string &$plain, array &$used, bool $defer_media ) {
 		$type = $field['type'];
 		if ( 'group' === $type ) {
 			if ( ! $value instanceof \stdClass || array_diff( array_keys( (array) $value ), array_keys( $field['children'] ) ) || array_diff( array_keys( $field['children'] ), array_keys( (array) $value ) ) ) { throw new \InvalidArgumentException( 'グループはすべての子フィールドキーを持つオブジェクトにしてください。省略・未知キーは使えません。' ); }
-			$result = array(); foreach ( $field['children'] as $key => $child ) { $result[ $key ] = self::value( $child, $value->$key, $media, $warnings, $plain, $used ); } return $result;
+			$result = array(); foreach ( $field['children'] as $key => $child ) { $result[ $key ] = self::value( $child, $value->$key, $media, $warnings, $plain, $used, $defer_media ); } return $result;
 		}
 		if ( 'text' === $type || 'textarea' === $type ) {
 			if ( ! is_string( $value ) || strlen( $value ) > 10000 ) { throw new \InvalidArgumentException( '文字項目は1万バイト以下の平文文字列にしてください。' ); }
@@ -133,7 +133,9 @@ final class Acf {
 			foreach ( $values as $choice ) { $plain .= ( $field['choices'][ $choice ] ?? '' ) . "\n"; }
 		} else {
 			if ( '' === $value && ! $field['required'] ) { return 0; }
-			if ( ! is_string( $value ) || ! isset( $media[ $value ] ) || 'available' !== $media[ $value ]['status'] || ( 'image' === $type ? 'image' : 'pdf' ) !== $media[ $value ]['kind'] ) { throw new \InvalidArgumentException( '画像・ファイル項目は利用可能な資料識別子で指定してください。ファイルはPDFのみ対応します。' ); }
+			if ( ! is_string( $value ) || ! isset( $media[ $value ] ) || ( 'image' === $type ? 'image' : 'pdf' ) !== $media[ $value ]['kind'] ) { throw new \InvalidArgumentException( '画像・ファイル項目は利用可能な資料識別子で指定してください。ファイルはPDFのみ対応します。' ); }
+			if ( $defer_media ) { $used[] = $value; return 0; }
+			if ( 'available' !== $media[ $value ]['status'] ) { throw new \InvalidArgumentException( '画像・ファイル項目は利用可能な資料識別子で指定してください。ファイルはPDFのみ対応します。' ); }
 			if ( ! empty( $media[ $value ]['is_placeholder'] ) ) { throw new \InvalidArgumentException( 'ACF画像項目には実画像を対応付けてください。ダミーの仮配置は本文画像とアイキャッチに対応しています。' ); }
 			$used[] = $value; return $media[ $value ]['attachment_id'];
 		}
@@ -142,13 +144,13 @@ final class Acf {
 		return $result;
 	}
 
-	public static function validate( \stdClass $input, string $type, array $media ): array {
+	public static function validate( \stdClass $input, string $type, array $media, bool $defer_media = false ): array {
 		$context = self::context( $type ); $schema = $context['fields']; $warnings = array(); $plain = ''; $values = array(); $used = array();
 		if ( isset( $context['unavailable'] ) ) { if ( (array) $input ) { throw new \InvalidArgumentException( $context['unavailable'] ); } $warnings[] = $context['unavailable']; }
 		if ( array_diff( array_keys( (array) $input ), array_keys( $schema ) ) ) { throw new \InvalidArgumentException( 'ACFのキーが未許可・未対応・別投稿先です。ACF連携設定を確認してください。' ); }
 		foreach ( $schema as $key => $field ) {
 			if ( ! property_exists( $input, $key ) ) { if ( $field['required'] ) { throw new \InvalidArgumentException( '必須ACF項目 ' . $field['label'] . ' がありません。' ); } continue; }
-			try { $values[ $key ] = self::value( $field, $input->$key, $media, $warnings, $plain, $used ); } catch ( \InvalidArgumentException $error ) { throw new \InvalidArgumentException( $field['label'] . '：' . $error->getMessage() ); }
+			try { $values[ $key ] = self::value( $field, $input->$key, $media, $warnings, $plain, $used, $defer_media ); } catch ( \InvalidArgumentException $error ) { throw new \InvalidArgumentException( $field['label'] . '：' . $error->getMessage() ); }
 		}
 		return array( 'values' => $values, 'schema' => $schema, 'warnings' => $warnings, 'plain' => $plain, 'used_media' => array_values( array_unique( $used ) ) );
 	}

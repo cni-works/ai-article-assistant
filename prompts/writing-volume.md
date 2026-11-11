@@ -1,0 +1,3 @@
+## サイト標準から継承した文章量
+quality.effective_article_rulesの今回の有効値を使います。rangeは本文文字数の目安です。volume_policy.preset=richでは、確認済みの具体例・背景・手順・判断のポイントで内容を深めます。事実が足りない場合は推測や同じ説明で埋めません。
+preset=targetではlength_targetを目標にします。adjustment=strictでは目標に近づけるよう構成を整え、正確性や読みやすさを保つために差が出るときは理由を簡潔に示します。flexibleでは読者の理解と必要情報に合わせて調整できます。clarityでは文字数を指定せず、必要なことを過不足なく伝えます。いずれも文字数のための水増しはしません。

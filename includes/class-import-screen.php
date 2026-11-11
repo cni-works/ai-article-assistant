@@ -9,7 +9,9 @@ final class ImportScreen {
 	}
 
 	private static function form( string $action, bool $upload = false ): void {
-		echo '<form method="post" class="aaa-form" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"' . ( $upload ? ' enctype="multipart/form-data"' : '' ) . '><input type="hidden" name="action" value="' . esc_attr( $action ) . '">';
+		$url = admin_url( 'admin-post.php' );
+		if ( $upload ) { $url = add_query_arg( array( 'action' => $action ), $url ); }
+		echo '<form method="post" class="aaa-form" action="' . esc_url( $url ) . '"' . ( $upload ? ' enctype="multipart/form-data"' : '' ) . '><input type="hidden" name="action" value="' . esc_attr( $action ) . '">';
 		wp_nonce_field( $action, 'aaa_nonce' );
 	}
 	private function guard( string $action ): void {
@@ -22,10 +24,29 @@ final class ImportScreen {
 		wp_safe_redirect( Admin::url( $page, $args ) ); exit;
 	}
 	public function preview(): void {
+		// PHP clears both input arrays when the whole multipart request exceeds post_max_size.
+		if ( 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) && empty( $_POST ) && empty( $_FILES )
+			&& ( $limit = ZipImport::post_limit() ) > 0 && (int) ( $_SERVER['CONTENT_LENGTH'] ?? 0 ) > $limit ) {
+			wp_die( '送信データがPHPのpost_max_sizeを超えました。小さいZIPを使うか、サーバー管理者に上限を確認してください。', '', array( 'response' => 413, 'back_link' => true ) );
+		}
 		$this->guard( 'aaa_csv_preview' );
 		$source = '';
 		if ( isset( $_FILES['aaa_csv'] ) && UPLOAD_ERR_NO_FILE !== ( $_FILES['aaa_csv']['error'] ?? UPLOAD_ERR_NO_FILE ) ) {
 			$file = $_FILES['aaa_csv'];
+			$error = $file['error'] ?? -1;
+			if ( in_array( $error, array( UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE ), true ) ) {
+				$this->finish( new \WP_Error( 'upload_size', 'ファイルがアップロード上限を超えています。PHPのupload_max_filesizeと画面に表示された上限を確認してください。' ) );
+			}
+			$extension = is_string( $file['name'] ?? null ) ? strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) ) : '';
+			if ( 'zip' === $extension ) {
+				if ( UPLOAD_ERR_OK !== $error || ! is_string( $file['tmp_name'] ?? null ) || ! is_uploaded_file( $file['tmp_name'] ) ) {
+					$this->finish( new \WP_Error( 'zip_upload', 'ZIPのアップロードが完了しませんでした。ファイルを選び直してください。' ) );
+				}
+				$result = ZipImport::read( $file['tmp_name'], static function ( $source, $entries, $hash ) {
+					return Importer::preview( $source, array( 'entries' => $entries, 'hash' => $hash ) );
+				} );
+				$this->finish( $result, 'import', array( 'stage' => ! is_wp_error( $result ) && ! Importer::zip_manual_rows( $result ) ? 'review' : 'files' ) );
+			}
 			if ( ! is_string( $file['name'] ?? null ) || ! is_string( $file['tmp_name'] ?? null ) || UPLOAD_ERR_OK !== ( $file['error'] ?? -1 ) || ! is_uploaded_file( $file['tmp_name'] ) || 'csv' !== strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) ) || filesize( $file['tmp_name'] ) > Csv::MAX_BYTES ) { $this->finish( new \WP_Error( 'upload', '正常にアップロードされた1MB以下の.csvファイルを選んでください。' ) ); }
 			if ( ! function_exists( 'finfo_open' ) ) { $this->finish( new \WP_Error( 'mime', 'サーバーでファイル形式を検査できません。CSV本文の貼り付けを使用してください。' ) ); }
 			$info = finfo_open( FILEINFO_MIME_TYPE ); $mime = finfo_file( $info, $file['tmp_name'] ); finfo_close( $info );
@@ -102,7 +123,7 @@ final class ImportScreen {
 		foreach ( $check['conflict_ids'] ?? array() as $ids ) { self::conflict_posts( $ids ); }
 	}
 	public static function export_form( array $prepared ): void {
-		echo '<section class="aaa-next-step"><h3>記事と画像が完成したら</h3><p>ChatGPTから受け取った最終CSVと画像を、次の画面へ取り込みます。ZIPの場合は先にパソコンで展開してください。</p><p><a class="button button-primary aaa-next-step-button" href="' . esc_url( Admin::url( 'import' ) ) . '"><span>STEP3：完成ファイルを取り込む</span><span class="aaa-next-arrow" aria-hidden="true">→</span></a></p><p>このボタンで、CSV・画像・PDFを登録する画面へ進みます。本文の貼り直しは不要です。</p></section><details><summary>代替手段：承認済みの原稿を貼り付けてCSV出力指示を作る</summary><p>従来の記事CSV v1と保存済み資料対応表を使う補助機能です。</p>';
+		echo '<section class="aaa-next-step"><h3>記事と画像が完成したら</h3><p>' . esc_html( ZipImport::available() ? 'ChatGPTから受け取った記事パッケージZIP、または記事CSVと画像を次の画面へ取り込みます。' : 'ChatGPTから受け取った記事CSVと画像を次の画面へ取り込みます。ZIPの場合は先にパソコンで展開してください。' ) . '</p><p><a class="button button-primary aaa-next-step-button" href="' . esc_url( Admin::url( 'import' ) ) . '"><span>STEP3：完成ファイルを取り込む</span><span class="aaa-next-arrow" aria-hidden="true">→</span></a></p><p>このボタンで、CSV・画像・PDFを登録する画面へ進みます。本文の貼り直しは不要です。</p></section><details><summary>代替手段：承認済みの原稿を貼り付けてCSV出力指示を作る</summary><p>従来の記事CSV v1と保存済み資料対応表を使う補助機能です。</p>';
 		self::form( 'aaa_export_prompt' );
 		echo '<input type="hidden" name="fingerprint" value="' . esc_attr( $prepared['fingerprint'] ) . '"><label for="aaa-approved-draft">承認済みの原稿</label><textarea id="aaa-approved-draft" name="approved_draft" class="large-text" rows="8" required></textarea><p><label><input type="checkbox" name="approved" value="1" required> 原稿の事実・内容を確認し、承認しました</label></p>';
 		submit_button( 'CSV出力用プロンプトを生成' ); echo '</form>';
@@ -114,7 +135,7 @@ final class ImportScreen {
 	}
 
 	private static function materials( array $stage ): void {
-		$rows = Importer::requirements( $stage );
+		$rows = isset( $stage['zip'] ) ? Importer::zip_manual_rows( $stage ) : Importer::requirements( $stage );
 		if ( ! $rows ) { return; }
 		$available = count( array_filter( $rows, static function ( $row ) { return 'available' === $row['media']['status']; } ) );
 		echo '<h2>画像・PDFを見ながら対応を確認</h2><p>資料 ' . esc_html( count( $rows ) ) . '件／登録済み ' . esc_html( $available ) . '件／未配置 ' . esc_html( count( $rows ) - $available ) . '件。今回追加したファイルは先頭番号で仮配置します。サムネイルと掲載位置を確認し、下のボタンでまとめてプレビューへ進みます。</p><p>番号なし・番号重複・登録済み画像は手動で選びます。選択済みの配置は自動で上書きしません。画像ZIPはパソコンで展開してから登録してください。</p>';
@@ -161,7 +182,35 @@ final class ImportScreen {
 		submit_button( '配置を確認して記事をプレビュー', 'primary aaa-main-action' ); echo '</form>';
 	}
 
-	private static function requirements_present( array $stage ): bool { return (bool) Importer::requirements( $stage ); }
+	private static function requirements_present( array $stage ): bool {
+		return (bool) ( isset( $stage['zip'] ) ? Importer::zip_manual_rows( $stage ) : Importer::requirements( $stage ) );
+	}
+
+	private static function zip_summary( array $stage ): void {
+		$zip = $stage['zip'];
+		echo '<p class="aaa-current-task">' . esc_html( 'ZIPから ' . count( $zip['matches'] ) . '点を自動で対応付けました。確認画面を閉じても、登録した資料はメディアライブラリに残ります。' ) . '</p>';
+		if ( $zip['matches'] ) {
+			echo '<details><summary>ZIPから対応付けた資料</summary><ul>';
+			foreach ( Importer::requirements( $stage ) as $row ) {
+				$ref = $row['ref'];
+				if ( ! isset( $zip['matches'][ $ref ] ) ) { continue; }
+				$media = $row['media'];
+				echo '<li>' . esc_html( $ref . ' — ' . $zip['matches'][ $ref ] );
+				if ( ! empty( $media['featured'] ) ) { echo '（アイキャッチ）'; }
+				if ( 'available' === $media['status'] && 'image' === $media['kind'] ) {
+					$thumb = wp_get_attachment_image_url( $media['attachment_id'], 'thumbnail' );
+					echo '<br><img class="aaa-media-thumb" src="' . esc_url( $thumb ?: $media['url'] ) . '" alt="' . esc_attr( $ref ) . '">';
+				}
+				echo '</li>';
+			}
+			echo '</ul></details>';
+		}
+		if ( $zip['unused'] ) {
+			echo '<p class="aaa-warning">' . esc_html( 'CSVと一致せず登録しなかったファイル ' . count( $zip['unused'] ) . '点。使う場合はZIPを展開し、必要なファイルを手動で追加してください。' ) . '</p><details><summary>登録しなかったファイル名</summary><ul>';
+			foreach ( $zip['unused'] as $name ) { echo '<li>' . esc_html( $name ) . '</li>'; }
+			echo '</ul></details>';
+		}
+	}
 	private static function previous_import( array $stage ): void {
 		if ( ! $stage ) { return; }
 		$state = $stage['state'] ?? '';
@@ -174,18 +223,28 @@ final class ImportScreen {
 	}
 	public static function render(): void {
 		$stage = Importer::session(); $requested = Views::get( 'stage' ); $state = $stage['state'] ?? '';
+		$zip_limit = ZipImport::available() ? ZipImport::upload_limit() : 0;
+		$file_label = $zip_limit ? '記事ZIP・CSV' : '記事CSV';
 		$review = 'review' === $requested && 'preview' === $state;
 		$result = 'result' === $requested && 'complete' === $state;
 		$active = $review || $result || ( 'files' === $requested && 'preview' === $state );
 		// Opening the import entry never resumes an old session or mutates it.
 		Views::journey( $review || $result ? 4 : 3, true );
 		echo '<p>記事CSVと画像・PDFから下書きを作ります。STEP1の概要入力やSTEP2のAI相談をせず、この画面から取り込みだけ利用できます。内容を確認してから登録し、ここでは公開されません。</p><details><summary>使えるファイル・以前の下書きの更新について</summary><p>記事CSV v1/v2、UTF-8・1MB以下・20記事まで対応します。初期設定・詳細設定CSVは管理者設定で読み込んでください。以前の下書きは<a href="' . esc_url( Admin::url( 'update' ) ) . '">下書きの更新</a>で対象と差分を確認します。</p></details>';
-		if ( $active ) { echo '<p class="aaa-current-task">' . esc_html( $result ? '取り込み処理が終わりました。下の結果を確認してください。' : 'CSVを読み込みました。下の画像・PDFと本文を確認してください。' ) . '</p><details><summary>別の記事CSVを選ぶ・読み直す</summary>'; }
-		else { echo '<h2>STEP3：完成ファイルを取り込む</h2><p>今回取り込む記事CSVを選んでください。前回の取り込み結果ではなく、新しいCSVの読み込みから始めます。</p>'; }
+		if ( $active ) { echo '<p class="aaa-current-task">' . esc_html( $result ? '取り込み処理が終わりました。下の結果を確認してください。' : ( isset( $stage['zip'] ) ? 'ZIPを読み込みました。画像・PDFの対応と記事を確認してください。' : 'CSVを読み込みました。下の画像・PDFと本文を確認してください。' ) ) . '</p><details><summary>' . esc_html( $zip_limit ? '別の記事ZIP・CSVを選ぶ・読み直す' : '別の記事CSVを選ぶ・読み直す' ) . '</summary>'; }
+		else { echo '<h2>STEP3：完成ファイルを取り込む</h2><p>' . esc_html( '今回取り込む' . $file_label . 'を選んでください。' ) . '</p>'; }
 		self::form( 'aaa_csv_preview', true );
 		if ( 'preview' === $state ) { echo '<p class="aaa-warning">作業途中の取り込みがあります。新しいCSVを読み込むと、保持中の比較・画像対応付けの作業が新しいCSVに切り替わります。' . esc_html( $active ? '今の作業を続ける場合はCSVの読み直しは不要です。' : '続けたい場合は「作業途中の取り込みを再開する」を選んでください。' ) . '作成済み記事・メディアは削除しません。</p>'; }
-		echo '<h2>ChatGPTから受け取った記事CSVを選ぶ</h2><div class="aaa-csv-drop aaa-upload-area" data-aaa-csv-drop><p class="aaa-upload-title">記事CSVをここにドラッグ＆ドロップ</p><p>または、下のボタンから選択してください。</p><label class="button aaa-main-action" for="aaa-csv-file" data-aaa-csv-pick hidden>記事CSVを選ぶ</label><input id="aaa-csv-file" type="file" name="aaa_csv" accept=".csv,text/csv" aria-describedby="aaa-csv-help aaa-csv-selection"><p id="aaa-csv-help">.csvファイル1点・1MB以下。ZIPの場合は、先にパソコンで展開してください。</p><p id="aaa-csv-selection" data-aaa-csv-selection role="status" aria-live="polite">まだファイルを選んでいません。</p><p data-aaa-csv-error role="alert" hidden></p></div><p>ファイルを選んだだけでは保存されません。次のボタンで内容を読み込みます。</p><details><summary>上級者向け：CSV本文を貼り付ける</summary><label for="aaa-csv-text">CSV本文（ファイルを選んだ場合はファイルを優先）</label><textarea id="aaa-csv-text" name="csv_text" class="large-text code" rows="8"></textarea></details>';
-		submit_button( '選んだCSVを読み込んで次へ', 'primary aaa-main-action' ); echo '</form><details><summary>専用CSVのサンプル</summary><p>架空の検証用原稿です。投稿先・スラッグ・管理ID等を用途に合わせて変更してください。内容を表計算ソフトで編集するときは文字列として扱ってください。</p><textarea class="large-text code" rows="5" readonly aria-label="検証用CSVサンプル">' . esc_textarea( Csv::example() ) . '</textarea></details>';
+		echo '<h2>ChatGPTから受け取った' . esc_html( $file_label ) . 'を選ぶ</h2><div class="aaa-csv-drop aaa-upload-area" data-aaa-csv-drop data-aaa-csv-label="' . esc_attr( $file_label ) . '" data-aaa-zip-limit="' . esc_attr( $zip_limit ) . '"><p class="aaa-upload-title">' . esc_html( $file_label ) . 'をここにドラッグ＆ドロップ</p><p>または、下のボタンから選択してください。</p><label class="button aaa-main-action" for="aaa-csv-file" data-aaa-csv-pick hidden>' . esc_html( $file_label ) . 'を選ぶ</label><input id="aaa-csv-file" type="file" name="aaa_csv" accept=".csv,text/csv' . ( $zip_limit ? ',.zip,application/zip' : '' ) . '" aria-describedby="aaa-csv-help aaa-csv-selection"><p id="aaa-csv-help">記事CSVは1MB以下。';
+		if ( $zip_limit ) {
+			echo ' ZIPは1記事分。アップロード上限 ' . esc_html( size_format( $zip_limit, 2 ) ) . '（' . esc_html( $zip_limit ) . 'バイト）、展開後の合計50MB・画像とPDFは合計20点まで。';
+		} else { echo ' ZIPはパソコンで展開し、記事CSVと画像・PDFを個別に取り込めます。'; }
+		echo '</p><p id="aaa-csv-selection" data-aaa-csv-selection role="status" aria-live="polite">まだファイルを選んでいません。</p><p data-aaa-csv-error role="alert" hidden></p></div>';
+		if ( $zip_limit ) {
+			echo '<p>ZIPを読み込むと、一致した画像・PDFをメディアライブラリに登録します。確認画面を閉じてもメディアは残ります。記事は確認してから下書きに保存します。</p><details><summary>サーバーのアップロード上限</summary><p>' . esc_html( 'WordPress ' . size_format( wp_max_upload_size(), 2 ) . ' ／ PHP upload_max_filesize ' . ini_get( 'upload_max_filesize' ) . ' ／ PHP post_max_size ' . ini_get( 'post_max_size' ) ) . '</p></details>';
+		}
+		echo '<details><summary>上級者向け：CSV本文を貼り付ける</summary><label for="aaa-csv-text">CSV本文（ファイルを選んだ場合はファイルを優先）</label><textarea id="aaa-csv-text" name="csv_text" class="large-text code" rows="8"></textarea></details>';
+		submit_button( $zip_limit ? 'ファイルを読み込んで次へ' : '選んだCSVを読み込んで次へ', 'primary aaa-main-action' ); echo '</form><details><summary>専用CSVのサンプル</summary><p>架空の検証用原稿です。投稿先・スラッグ・管理ID等を用途に合わせて変更してください。内容を表計算ソフトで編集するときは文字列として扱ってください。</p><textarea class="large-text code" rows="5" readonly aria-label="検証用CSVサンプル">' . esc_textarea( Csv::example() ) . '</textarea></details>';
 		if ( $active ) { echo '</details>'; }
 		if ( ! $active ) {
 			if ( in_array( $requested, array( 'files', 'review', 'result' ), true ) ) { echo '<p class="aaa-warning">指定した取り込みの段階を表示できません。期限切れや処理済みの場合があります。新しいCSVを選ぶか、保持されている作業・結果を確認してください。</p>'; }
@@ -204,8 +263,9 @@ final class ImportScreen {
 			} echo '</ul>'; return;
 		}
 		if ( 'preview' !== $stage['state'] ) { echo '<p class="aaa-warning">このプレビューは実行済みです。結果が表示されない場合、再取り込みの前に投稿一覧を確認してください。</p>'; return; }
+		if ( isset( $stage['zip'] ) ) { self::zip_summary( $stage ); }
 		if ( ! $review ) { self::materials( $stage ); self::preview_errors( $stage['check'] ); if ( ! self::requirements_present( $stage ) && ! $stage['check']['errors'] && $stage['check']['items'] ) { echo '<p><a class="button button-primary aaa-main-action" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'review' ) ) ) . '">内容を確認して次へ</a></p>'; } return; }
-		echo '<p><a class="button" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'files' ) ) ) . '">STEP3へ戻って画像・PDFを変更</a></p>';
+		if ( ! isset( $stage['zip'] ) || self::requirements_present( $stage ) ) { echo '<p><a class="button" href="' . esc_url( Admin::url( 'import', array( 'stage' => 'files' ) ) ) . '">STEP3へ戻って画像・PDFを変更</a></p>'; }
 		echo '<h2>内容を確認して下書き保存</h2><p>有効期限は検証から30分です。設定や既存投稿の変更時は再検証が必要です。</p>';
 		self::preview_errors( $stage['check'] );
 		foreach ( $stage['check']['items'] as $item ) {
@@ -222,7 +282,7 @@ final class ImportScreen {
 			foreach ( $item['media'] ?? array() as $ref => $material ) { echo '<p>資料 ' . esc_html( $ref ) . '：' . esc_html( 'available' === $material['status'] ? $material['filename'] : '未配置・利用不可' ) . '</p>'; }
 			echo '</details><details><summary>確認事項 ' . esc_html( count( $item['warnings'] ) ) . '件</summary>';
 			foreach ( $item['warnings'] as $warning ) { echo '<p class="aaa-warning">' . esc_html( $warning ) . '</p>'; }
-			echo '</details><details><summary>本文と画像の配置を確認</summary><div class="aaa-preview" tabindex="0" role="region" aria-label="記事本文プレビュー">' . wp_kses_post( $item['post_content'] ) . '</div></details>';
+			echo '</details><details' . ( isset( $stage['zip'] ) ? ' open' : '' ) . '><summary>本文と画像の配置を確認</summary><div class="aaa-preview" tabindex="0" role="region" aria-label="記事本文プレビュー">' . wp_kses_post( $item['post_content'] ) . '</div></details>';
 		}
 		if ( ! $stage['check']['errors'] && $stage['check']['items'] ) {
 			self::form( 'aaa_csv_commit' ); echo '<input type="hidden" name="token" value="' . esc_attr( $stage['token'] ) . '"><p><label><input type="checkbox" name="confirmed" value="1" required> 内容と警告を確認しました。新規下書きとして登録します</label></p>'; if ( Importer::dummy( $stage['check'] ) ) { echo '<p><label><input type="checkbox" name="confirmed_dummy" value="1" required> ダミー画像で仮配置し、公開前に置換の要否を確認します</label></p>'; } if ( Importer::missing( $stage['check'] ) ) { echo '<p><label><input type="checkbox" name="confirmed_missing" value="1" required> 不足ファイルを確認し、未配置の確認用段落を残して下書きを作成します（公開前に差し替え）</label></p>'; } submit_button( '確認した内容で下書きを作成する', 'primary aaa-main-action' ); echo '</form>';

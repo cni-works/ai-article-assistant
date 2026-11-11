@@ -8,7 +8,8 @@ final class Consultation {
 	public static function mode( ?array $article = null ): string { return ( $article ?? Store::article() )['interaction_mode'] ?? 'guided'; }
 	public static function save_titles( array $raw, array $previous ) {
 		if ( ! Importer::allowed() ) { return new \WP_Error( 'permission', '相談を利用する権限がありません。' ); }
-		$details = Store::sanitize( Config::article_fields(), array_replace( array_intersect_key( $previous, Config::article_fields() ), $raw ) );
+		$fields = array_diff_key( Config::article_fields(), array( 'autonomous_start' => true ) );
+		$details = Store::sanitize( $fields, array_replace( array_intersect_key( $previous, $fields ), $raw ) );
 		if ( is_wp_error( $details ) ) { return $details; }
 		$details['reference_summary'] = 'yes'; // Legacy field retained; reference is now standard, subject to administrator policy.
 		$article = array_replace( $previous, $details, array( 'schema_version' => 1, 'article_key' => $previous['article_key'] ?? wp_generate_uuid4(), 'profile_id' => $previous['profile_id'] ?? '', 'updated_at' => current_time( 'mysql' ) ) );
@@ -103,8 +104,8 @@ final class Consultation {
 	}
 	public static function cards( string $field, string $legend, array $choices, string $value ): void {
 		echo '<fieldset class="aaa-choice-group" data-aaa-choice="' . esc_attr( $field ) . '"><legend>' . esc_html( $legend ) . '</legend><div class="aaa-choice-cards">';
-		$icons = array( 'topic' => 'edit-page', 'ideas' => 'lightbulb', 'titles' => 'editor-textcolor', 'guided' => 'format-chat', 'delegated' => 'star-filled', 'proofread' => 'editor-spellcheck' );
-		$help = array( 'topic' => '決まっているテーマをもとに記事を作る', 'ideas' => 'テーマや切り口からAIと相談する', 'titles' => '複数のネタ・タイトル案を考える', 'guided' => '構成や本文を段階的に確認する', 'delegated' => '必要な確認後に構成と本文をまとめて提案', 'proofread' => '自分で書いた原稿の趣旨を保って整える' );
+		$icons = array( 'topic' => 'edit-page', 'ideas' => 'lightbulb', 'titles' => 'editor-textcolor', 'guided' => 'format-chat', 'delegated' => 'star-filled', 'autonomous' => 'yes-alt', 'proofread' => 'editor-spellcheck' );
+		$help = array( 'topic' => '決まっているテーマをもとに記事を作る', 'ideas' => 'テーマや切り口からAIと相談する', 'titles' => '複数のネタ・タイトル案を考える', 'guided' => '構成や本文を段階的に確認する', 'delegated' => '必要な確認後に構成と本文をまとめて提案', 'autonomous' => '必要な事実だけ確認し、点検した完成物をまとめて受け取る', 'proofread' => '自分で書いた原稿の趣旨を保って整える' );
 		foreach ( $choices as $key => $label ) {
 			echo '<label class="aaa-choice-card"><input type="radio" name="data[' . esc_attr( $field ) . ']" value="' . esc_attr( $key ) . '" ' . checked( $value, $key, false ) . '><span class="aaa-choice-content"><span class="dashicons dashicons-' . esc_attr( $icons[ $key ] ?? 'edit' ) . '" aria-hidden="true"></span><span class="aaa-choice-text"><span class="aaa-choice-label">' . esc_html( $label ) . '</span><span class="aaa-choice-help">' . esc_html( $help[ $key ] ?? '' ) . '</span></span><span class="aaa-choice-tick" aria-hidden="true">✓</span></span></label>';
 		}

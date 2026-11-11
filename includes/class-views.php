@@ -97,9 +97,11 @@ final class Views {
 		$values = Store::site();
 		echo '<h2>サイト・事業の共通情報</h2><p>どんなサービス・活動なのか、誰向けなのかを共通情報として保存します。設定した情報は今後のAI相談の材料になります。保存だけでは外部へ送信されません。</p><p>本人の担当・経験・考え方は、<a href="' . esc_url( Admin::url( 'personal' ) ) . '">個人設定・投稿者プロフィール</a>に登録できます。個人運営でも、共通情報と本人の情報はそれぞれ保存します。</p>';
 		echo '<p>事実に関する情報は、基本初期設定でAIと相談し、内容を承認してから取り込めます。<a href="' . esc_url( Admin::url( 'setup' ) ) . '">基本初期設定へ</a>。文章の推奨設定は「記事品質の共通ルール」で管理します。</p>';
-		self::fields( array_diff_key( Config::site_info_fields(), Config::image_fields() ), $values );
+		self::fields( array_diff_key( Config::site_info_fields(), Config::image_fields(), Config::volume_fields() ), $values );
 		echo '<h2>画像の標準設定</h2><p>記事ごとに変更できます。既存の作業は開始時の設定を維持します。</p>';
 		self::fields( Config::image_fields(), $values );
+		echo '<h2>文章量の標準設定</h2><p>記事の種類で「サイト標準を継承」を選ぶと適用されます。記事ごとの個別指定を優先します。</p>';
+		self::fields( Config::volume_fields(), $values );
 		self::end();
 	}
 
@@ -211,6 +213,7 @@ final class Views {
 		self::form( 'profile' );
 		self::hidden( 'profile_id', $id );
 		$values = $profiles[ $id ] ?? Store::defaults( Config::profile_fields() );
+		if ( ! $id ) { $values['length_mode'] = 'inherit'; }
 		self::fields( array_diff_key( Config::profile_fields(), Config::workflow_fields(), Config::rules() ), $values );
 		echo '<details><summary>標準分類に指定できる候補（各分類100件まで）</summary>';
 		foreach ( Setup::catalogue() as $taxonomy => $items ) { foreach ( $items as $term_id => $term ) { echo '<p>' . esc_html( $term['name'] . '：' . $taxonomy . ':' . $term_id ) . '</p>'; } }
@@ -344,6 +347,9 @@ final class Views {
 		Consultation::cards( 'planning_mode', '① 相談の始め方', $basic['planning_mode'][4], $article['planning_mode'] ?? 'topic' );
 		echo '<div data-aaa-interaction-fields>';
 		Consultation::cards( 'interaction_mode', '② 記事の進め方', $basic['interaction_mode'][4], $article['interaction_mode'] ?? ( $article ? 'guided' : Store::site()['default_interaction'] ) );
+		echo '<div data-aaa-autonomous-fields>';
+		self::fields( array( 'autonomous_start' => $basic['autonomous_start'] ), array( 'autonomous_start' => Store::autonomous_start( $article ) ) );
+		echo '</div>';
 		echo '<p class="description" data-aaa-mode-help>添削は「書きたいことが決まっている」を選び、原稿を入力します。お任せでも重要な事実確認と最終承認は必要です。</p></div><div data-aaa-overview-fields>';
 		self::fields( array_intersect_key( $basic, array_flip( array( 'facts' ) ) ), $article );
 		echo '</div><div data-aaa-proofread-fields>';
@@ -361,6 +367,12 @@ final class Views {
 		$image_defaults = array_merge( Store::defaults( Config::image_fields() ), $image_site );
 		$image_summary = Config::image_fields()['image_layout'][4][ $image_defaults['image_layout'] ] ?? '従来の画像方針を使う';
 		if ( 'intro_body' === $image_defaults['image_layout'] ) { $image_summary .= '（本文' . $image_defaults['image_body_count'] . '枚）'; }
+		if ( 'planned' === $image_defaults['image_layout'] ) {
+			$plan = Store::image_context( $image_defaults, array_replace( $article, array( 'image_choice' => 'site' ) ), ProfileRuntime::profile( $article ) );
+			$image_summary = 'planned' === $plan['layout']
+				? ( Config::image_fields()['image_lead_placement'][4][ $plan['lead_placement'] ] ?? '先頭用画像なし' ) . '・追加の本文画像' . $plan['body_count'] . '枚'
+				: ( 'custom' === $plan['layout'] ? '記事の種類・個別指定の画像方針を使用' : $image_summary );
+		}
 		$image_summary .= '・' . ( Config::image_fields()['image_style'][4][ $image_defaults['image_style'] ] ?? '記事に合わせる' );
 		$image_fields = array_intersect_key( $basic, array_flip( array( 'image_choice' ) ) );
 		$image_fields['image_choice'][4]['site'] = '初期設定を使う：' . $image_summary;
@@ -373,7 +385,7 @@ final class Views {
 		if ( $snapshot ) { echo '<p>作成開始時の設定：' . esc_html( $snapshot['captured_at'] ) . '</p><p><label><input type="checkbox" name="data[adopt_settings]" value="1"> 管理者の最新設定を採用する</label></p>'; }
 		echo '<h3>カテゴリー・タグ（複数選択可）</h3><p class="description">投稿先に対応する分類だけを選択してください。カテゴリーの最終決定は利用者が行います。</p>';
 		self::article_terms( $types, $form_article );
-		self::fields( array_diff_key( Config::article_fields(), array_flip( array( 'planning_mode', 'facts', 'interaction_mode', 'source_draft', 'reference_summary', 'audience', 'image_choice', 'image_request' ) ) ), $article );
+		self::fields( array_diff_key( Config::article_fields(), array_flip( array( 'planning_mode', 'facts', 'interaction_mode', 'autonomous_start', 'source_draft', 'reference_summary', 'audience', 'image_choice', 'image_request' ) ) ), $article );
 		echo '<h3>今回だけの文章の指定</h3><p>空欄は管理者が用意した設定に従います。禁止事項や公開前チェックは変更できません。</p>';
 		self::fields( Config::rules(), $article['overrides'] ?? array(), 'data[overrides]', true );
 		echo '<p>記事条件を保存した後、<a href="' . esc_url( Admin::url( 'media' ) ) . '">画像・PDF管理</a>で資料を登録できます。実ファイルはChatGPTへ直接添付し、読めない資料は説明を補ってください。</p></details></div></div></section>';
@@ -430,6 +442,10 @@ final class Views {
 		if ( is_wp_error( $record ) || ! $record ) { echo '<p class="aaa-warning">概要を確認し、STEP1から相談文を準備してください。</p>'; return; }
 		echo '<p>下のボタンで相談文を全文コピーし、新しいChatGPTのチャットへ貼り付けてください。その後はAIの案内に沿って進めます。コピーだけでは制作完了になりません。</p><p><button type="button" class="button button-primary aaa-main-action" data-aaa-copy hidden>相談文をコピーする</button> <span role="status" aria-live="polite" data-aaa-copy-status></span></p><label for="aaa-prompt-output">ChatGPTへ渡す相談文（スクロールして確認できます）</label><textarea id="aaa-prompt-output" class="large-text code aaa-prompt-scroll" rows="10" readonly>' . esc_textarea( $record['text'] ) . '</textarea><details><summary>生成記録</summary><p>プロンプト版：' . esc_html( $record['prompt_version'] ) . ' ／ 生成日時：' . esc_html( $record['generated_at'] ) . '</p></details>';
 		$scope = $prepared['context']['existing_articles'] ?? array();
+		if ( isset( $prepared['context']['article']['autonomous_start'] ) ) {
+			$start = $prepared['context']['article']['autonomous_start'];
+			echo '<p>' . esc_html( 'choose' === $start ? 'ChatGPTが提示した3案から1つ選び、同じチャットで制作を続けます。' : 'ChatGPTが企画を審査し、自動で制作を進めます。' ) . ' 重要な事実が不明な場合は回答してください。取り込み画面で記事と画像を最終確認して下書きにします。</p>';
+		}
 		if ( ! Consultation::titles() && 'public_summary' === ( $scope['status'] ?? '' ) ) {
 			echo '<p>既存記事の参照：公開記事の概要 ' . esc_html( $scope['count'] ) . '件（最新50件まで）を相談文に含めています。</p>';
 		}
